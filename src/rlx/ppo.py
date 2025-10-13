@@ -69,7 +69,7 @@ class PPOConfig:
     gae_lambda: float = 0.95
     clip_coef: float = 0.2
     clip_vloss: bool = True
-    ent_coef: float = 0.01
+    ent_coef: float = 0.01  # Recommended by Andrychowicz et al. 2021
     vf_coef: float = 0.5
     max_grad_norm: float = 0.5
     target_kl: float | None = None
@@ -563,11 +563,12 @@ def train(cfg: PPOConfig):
         lr_schedule = optax.constant_schedule(cfg.learning_rate)
 
     # Initialize optimizer with schedule and gradient clipping
+    # Note: Using eps=1e-5 to match CleanRL's Adam optimizer
     optimizer = nnx.Optimizer(
         model,
         optax.chain(
             optax.clip_by_global_norm(cfg.max_grad_norm),
-            optax.adam(learning_rate=lr_schedule),
+            optax.adam(learning_rate=lr_schedule, eps=1e-5),
         ),
         wrt=nnx.Param,
     )
@@ -685,12 +686,6 @@ def train(cfg: PPOConfig):
         b_returns = returns.reshape(-1)
         b_values = jnp.array(rollout_values).reshape(-1)
 
-        # Normalize advantages
-        if cfg.norm_adv:
-            b_advantages = (b_advantages - b_advantages.mean()) / (
-                b_advantages.std() + 1e-8
-            )
-
         # Update policy
         update_info = {}
         for epoch in range(cfg.update_epochs):
@@ -702,13 +697,20 @@ def train(cfg: PPOConfig):
                 end = start + cfg.minibatch_size
                 mb_inds = perm[start:end]
 
+                # Normalize advantages per minibatch
+                mb_advantages = b_advantages[mb_inds]
+                if cfg.norm_adv:
+                    mb_advantages = (mb_advantages - mb_advantages.mean()) / (
+                        mb_advantages.std() + 1e-8
+                    )
+
                 info = train_step(
                     model=model,
                     optimizer=optimizer,
                     obs=b_obs[mb_inds],
                     actions=b_actions[mb_inds],
                     old_logprobs=b_logprobs[mb_inds],
-                    advantages=b_advantages[mb_inds],
+                    advantages=mb_advantages,
                     returns=b_returns[mb_inds],
                     old_values=b_values[mb_inds],
                     clip_coef=cfg.clip_coef,

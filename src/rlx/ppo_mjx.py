@@ -462,11 +462,12 @@ def train(cfg: PPOMJXConfig):
         lr_schedule = optax.constant_schedule(cfg.learning_rate)
 
     # Initialize optimizer with gradient clipping
+    # Note: Using eps=1e-5 to match CleanRL's Adam optimizer
     optimizer = nnx.Optimizer(
         model,
         optax.chain(
             optax.clip_by_global_norm(cfg.max_grad_norm),
-            optax.adam(learning_rate=lr_schedule),
+            optax.adam(learning_rate=lr_schedule, eps=1e-5),
         ),
         wrt=nnx.Param,
     )
@@ -591,12 +592,6 @@ def train(cfg: PPOMJXConfig):
         b_returns = returns.reshape(-1)
         b_values = rollout_values.reshape(-1)
 
-        # Normalize advantages
-        if cfg.norm_adv:
-            b_advantages = (b_advantages - b_advantages.mean()) / (
-                b_advantages.std() + 1e-8
-            )
-
         # Clear rollout storage
         rollout_obs = []
         rollout_actions = []
@@ -616,13 +611,20 @@ def train(cfg: PPOMJXConfig):
                 end = start + cfg.minibatch_size
                 mb_inds = perm[start:end]
 
+                # Normalize advantages per minibatch (like CleanRL)
+                mb_advantages = b_advantages[mb_inds]
+                if cfg.norm_adv:
+                    mb_advantages = (mb_advantages - mb_advantages.mean()) / (
+                        mb_advantages.std() + 1e-8
+                    )
+
                 info = train_step(
                     model=model,
                     optimizer=optimizer,
                     obs=b_obs[mb_inds],
                     actions=b_actions[mb_inds],
                     old_logprobs=b_logprobs[mb_inds],
-                    advantages=b_advantages[mb_inds],
+                    advantages=mb_advantages,
                     returns=b_returns[mb_inds],
                     old_values=b_values[mb_inds],
                     clip_coef=cfg.clip_coef,

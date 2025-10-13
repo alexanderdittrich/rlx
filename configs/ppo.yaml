@@ -33,7 +33,9 @@ max_grad_norm: 0.5
 target_kl: null  # set to 0.015 for early stopping based on KL divergence
 
 # Network architecture
-hidden_sizes: [64, 64]
+hidden_sizes:
+- 64
+- 64
 
 # Normalization
 norm_adv: true  # normalize advantages
@@ -44,6 +46,7 @@ clip_reward: 10.0  # clip normalized rewards
 
 # Logging
 log_frequency: 1  # log every N updates
+use_wandb: true
 seed: 42
 
 # Checkpointing

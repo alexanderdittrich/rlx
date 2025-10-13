@@ -34,6 +34,7 @@ norm_adv: true  # Normalize advantages
 # Logging
 log_frequency: 10  # Log every N updates
 use_wandb: true  # Use Weights & Biases
+wandb_project: "ppo-mjx"  # Wandb project name
 seed: 42  # Random seed
 
 # Checkpointing

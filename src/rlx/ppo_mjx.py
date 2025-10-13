@@ -23,8 +23,10 @@ warnings.filterwarnings("ignore", category=UserWarning, module="pydantic")
 warnings.filterwarnings("ignore", message=".*UnsupportedFieldAttributeWarning.*")
 
 import os
+import re
 import time
-from dataclasses import dataclass
+from dataclasses import dataclass, field
+from datetime import datetime
 from pathlib import Path
 from typing import Any
 
@@ -46,6 +48,9 @@ os.environ["XLA_FLAGS"] = xla_flags
 os.environ["XLA_PYTHON_CLIENT_PREALLOCATE"] = "false"
 os.environ["MUJOCO_GL"] = "egl"
 jax.config.update("jax_default_matmul_precision", "highest")
+
+# Timestamp format for run IDs
+TIMESTAMP_FORMAT = "%Y%m%d_%H%M%S"
 
 
 # ---------------------------
@@ -78,7 +83,7 @@ class PPOMJXConfig:
     target_kl: float | None = None
 
     # Network architecture
-    hidden_sizes: list[int] = None  # [256, 256] by default for complex tasks
+    hidden_sizes: list[int] | None = None  # [256, 256] by default for complex tasks
 
     # Normalization
     norm_adv: bool = True
@@ -86,6 +91,7 @@ class PPOMJXConfig:
     # Logging
     log_frequency: int = 10
     use_wandb: bool = True
+    wandb_project: str = "ppo-mjx"  # Wandb project name
     seed: int = 42
 
     # Checkpointing
@@ -472,10 +478,16 @@ def train(cfg: PPOMJXConfig):
         wrt=nnx.Param,
     )
 
+    # Create run ID with timestamp
+    time_stamp = datetime.now().strftime(TIMESTAMP_FORMAT)
+    # Environment names in MJX don't have version suffixes, but clean just in case
+    env_name_clean = cfg.env_name.lower()
+    run_id = f"{time_stamp}-{env_name_clean}-ppo-{cfg.seed}"
+
     # Setup checkpointing
     checkpoint_manager = None
     if cfg.save_model:
-        checkpoint_dir = Path(cfg.checkpoint_dir).resolve() / f"{cfg.env_name}-{cfg.seed}"
+        checkpoint_dir = Path(cfg.checkpoint_dir).resolve() / run_id
         checkpoint_dir.mkdir(parents=True, exist_ok=True)
 
         checkpoint_manager = ocp.CheckpointManager(
@@ -489,9 +501,9 @@ def train(cfg: PPOMJXConfig):
     # Initialize wandb
     if cfg.use_wandb:
         wandb.init(
-            project="ppo-mjx",
+            project=cfg.wandb_project,
             config=vars(cfg),
-            name=f"{cfg.env_name}-{cfg.seed}",
+            name=run_id,
         )
 
     # Initialize environment states

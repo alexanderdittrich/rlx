@@ -47,11 +47,12 @@ clip_reward: 10.0  # clip normalized rewards
 # Logging
 log_frequency: 1  # log every N updates
 use_wandb: true
+wandb_project: "ppo-nnx"  # wandb project name
 seed: 42
 
 # Checkpointing
 save_model: true  # save model checkpoints
 checkpoint_dir: "checkpoints"  # directory to save checkpoints
-checkpoint_frequency: 100  # save checkpoint every N updates
+checkpoint_frequency: 20  # save checkpoint every N updates
 keep_checkpoints: 3  # number of checkpoints to keep
 resume_from: null  # path to checkpoint directory to resume from

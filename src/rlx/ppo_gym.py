@@ -19,8 +19,10 @@ warnings.filterwarnings("ignore", category=UserWarning, module="pydantic")
 warnings.filterwarnings("ignore", message=".*UnsupportedFieldAttributeWarning.*")
 
 import os
+import re
 import time
-from dataclasses import dataclass
+from dataclasses import dataclass, field
+from datetime import datetime
 from pathlib import Path
 from typing import NamedTuple
 
@@ -43,6 +45,9 @@ os.environ["XLA_FLAGS"] = xla_flags
 os.environ["XLA_PYTHON_CLIENT_PREALLOCATE"] = "false"
 os.environ["MUJOCO_GL"] = "egl"
 jax.config.update("jax_default_matmul_precision", "highest")
+
+# Timestamp format for run IDs
+TIMESTAMP_FORMAT = "%Y%m%d_%H%M%S"
 
 
 # ---------------------------
@@ -75,7 +80,7 @@ class PPOConfig:
     target_kl: float | None = None
 
     # Network architecture
-    hidden_sizes: list[int] = [64, 64]  # [64, 64] by default
+    hidden_sizes: list[int] | None = None 
 
     # Normalization
     norm_adv: bool = True
@@ -87,6 +92,7 @@ class PPOConfig:
     # Logging
     log_frequency: int = 10  # log every N updates
     use_wandb: bool = False  # Enable wandb logging
+    wandb_project: str = "ppo-nnx"  # Wandb project name
     seed: int = 42
 
     # Checkpointing
@@ -97,6 +103,8 @@ class PPOConfig:
     resume_from: str | None = None  # Path to checkpoint directory to resume from
 
     def __post_init__(self):
+        if self.hidden_sizes is None:
+            self.hidden_sizes = [64, 64]
         self.batch_size = self.num_envs * self.num_steps
         self.minibatch_size = self.batch_size // self.num_minibatches
         self.num_iterations = self.total_timesteps // self.batch_size
@@ -573,10 +581,16 @@ def train(cfg: PPOConfig):
         wrt=nnx.Param,
     )
 
+    # Create run ID with timestamp
+    time_stamp = datetime.now().strftime(TIMESTAMP_FORMAT)
+    # Remove version suffix from environment name (e.g., -v1, -v5)
+    env_name_clean = re.sub(r"-v\d+$", "", cfg.env_id.lower())
+    run_id = f"{time_stamp}-{env_name_clean}-ppo-{cfg.seed}"
+
     # Setup checkpointing
     checkpoint_manager = None
     if cfg.save_model:
-        checkpoint_dir = Path(cfg.checkpoint_dir).resolve() / f"{cfg.env_id}-{cfg.seed}"
+        checkpoint_dir = Path(cfg.checkpoint_dir).resolve() / run_id
         checkpoint_dir.mkdir(parents=True, exist_ok=True)
 
         # Create checkpoint manager using new API
@@ -591,9 +605,9 @@ def train(cfg: PPOConfig):
     # Initialize wandb
     if cfg.use_wandb:
         wandb.init(
-            project="ppo-nnx",
+            project=cfg.wandb_project,
             config=vars(cfg),  # Convert dataclass to dict
-            name=f"{cfg.env_id}-{cfg.seed}",
+            name=run_id,
         )
 
     # Training loop
@@ -827,7 +841,7 @@ def train(cfg: PPOConfig):
 # ---------------------------
 # Hydra entry point
 # ---------------------------
-@hydra.main(version_base=None, config_path="../../configs", config_name="ppo")
+@hydra.main(version_base=None, config_path="../../configs", config_name="ppo_gym")
 def main(cfg: DictConfig):
     """Main entry point."""
     # Convert OmegaConf to dataclass

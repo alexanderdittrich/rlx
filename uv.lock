@@ -1334,7 +1334,7 @@ wheels = [
 [[package]]
 name = "rlx"
 version = "0.1.0"
-source = { virtual = "." }
+source = { editable = "." }
 dependencies = [
     { name = "distrax" },
     { name = "flax" },
@@ -1347,6 +1347,7 @@ dependencies = [
     { name = "ruff" },
     { name = "tqdm" },
     { name = "wandb" },
+    { name = "warp-lang" },
 ]
 
 [package.metadata]
@@ -1362,6 +1363,7 @@ requires-dist = [
     { name = "ruff", specifier = ">=0.14.0" },
     { name = "tqdm", specifier = ">=4.67.1" },
     { name = "wandb", specifier = ">=0.22.2" },
+    { name = "warp-lang", specifier = ">=1.9.1" },
 ]
 
 [[package]]
@@ -1669,6 +1671,20 @@ wheels = [
     { url = "https://files.pythonhosted.org/packages/30/43/ae3fa46e20b1d9a6508dd9abe716d57205c038ed4661c5c98ace48a60eac/wandb-0.22.2-py3-none-win32.whl", hash = "sha256:44d12bd379dbe15be5ceed6bdf23803d42f648ba0dd111297b4c47a3c7be6dbd", size = 19075950, upload-time = "2025-10-07T19:54:14.892Z" },
     { url = "https://files.pythonhosted.org/packages/09/59/c174321e868205f7a659d1e5ec51f546e62267296d6f4179bb9119294964/wandb-0.22.2-py3-none-win_amd64.whl", hash = "sha256:c95eb221bf316c0872f7ac55071856b9f25f95a2de983ada48acf653ce259386", size = 19075953, upload-time = "2025-10-07T19:54:16.837Z" },
     { url = "https://files.pythonhosted.org/packages/7a/a2/c7c24fda78513cab5686949d8cb36459dbbccbbb4b2b6fc67237ece31a00/wandb-0.22.2-py3-none-win_arm64.whl", hash = "sha256:20d2ab9aa10445aab3d60914a980f002a4f66566e28b0cd156b1e462f0080a0d", size = 17383217, upload-time = "2025-10-07T19:54:19.384Z" },
+]
+
+[[package]]
+name = "warp-lang"
+version = "1.9.1"
+source = { registry = "https://pypi.org/simple" }
+dependencies = [
+    { name = "numpy" },
+]
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/4c/d9/139c0ec0eb9ac79457ff363458c5530ecce517d291a2ba0535cec6bf2709/warp_lang-1.9.1-py3-none-macosx_10_13_universal2.whl", hash = "sha256:3ce61319a268f38d135f4a26c4e75c29488a88cf3af273896e1fb2bf174131ec", size = 45402782, upload-time = "2025-10-01T07:35:38.304Z" },
+    { url = "https://files.pythonhosted.org/packages/a8/35/bde91ead2c8e6f9f3a1c0faaac85724b6d6411ce2c6743ffe2b94e94b6bc/warp_lang-1.9.1-py3-none-manylinux_2_28_x86_64.whl", hash = "sha256:2211e0cd9332ca44193801285cd1293c0b7580932da8da32e18d70b832adac12", size = 132023480, upload-time = "2025-10-01T07:35:49.783Z" },
+    { url = "https://files.pythonhosted.org/packages/74/24/7e4e1e9edaa95a7fb8a3d488a944c7e26fca3c6da13ad44833fb326f1986/warp_lang-1.9.1-py3-none-manylinux_2_34_aarch64.whl", hash = "sha256:e58d0503b34d484d4699077ac4161a342d18714e5eb9bf63ede9d5df2188ecf0", size = 134519306, upload-time = "2025-10-01T07:36:01.604Z" },
+    { url = "https://files.pythonhosted.org/packages/02/04/fa6fd48f12c35377e5f44d835827b8359b13bee7832f8950b2acc7c2527d/warp_lang-1.9.1-py3-none-win_amd64.whl", hash = "sha256:c971ed996004f729ceaf38b660831e95c837758df8ce6413a5d87d76652b0f88", size = 114319659, upload-time = "2025-10-01T07:36:12.654Z" },
 ]
 
 [[package]]

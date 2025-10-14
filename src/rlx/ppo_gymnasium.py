@@ -995,13 +995,41 @@ def train(cfg: PPOConfig):
 
 
 # ---------------------------
+# Huzzah banner
+# ---------------------------
+def huzzah(cfg):
+    print()
+    print("                     0000000                                                    ")
+    print("                     0000000                       0000                         ")
+    print("           000    0000 0000                        0000                         ")
+    print("        00000000000      00             000 00000  0000   0000     0000         ")
+    print("        0000000000        00            00000      0000     000  0000           ")
+    print("        0000000000000   0000000000      000        0000      000000             ")
+    print("          00000      00000000000000     000        0000      000000             ")
+    print("                      00000000000000    000        0000     000  0000           ")
+    print("                      0000000000000     000        0000   0000     0000         ")
+    print("                        0000000000                                              ")
+    print()
+    print("oooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooo")
+    print()
+    print(f"Environment: \t\t{cfg.env_id}")
+    print(f"Algorithm: \t\tPPO")
+    print(f"Random Seed: \t\t{cfg.seed}")
+    print(f"# envs: \t\t{cfg.num_envs}")
+    print(f"# timesteps: \t\t{cfg.total_timesteps}")
+    print(f"Logging directory: \t{cfg.checkpoint_dir}")
+    print()
+                                                                                          
+                                                                                          
+# ---------------------------
 # Hydra entry point
 # ---------------------------
-@hydra.main(version_base=None, config_path="../../configs", config_name="ppo_gym")
+@hydra.main(version_base=None, config_path="../../configs", config_name="ppo_gymnasium")
 def main(cfg: DictConfig):
     """Main entry point."""
     # Convert OmegaConf to dataclass
     ppo_cfg = PPOConfig(**OmegaConf.to_container(cfg, resolve=True))
+    huzzah(ppo_cfg)
     train(ppo_cfg)
 
 

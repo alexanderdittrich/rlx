@@ -1,7 +1,11 @@
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
 [project]
 name = "rlx"
 version = "0.1.0"
-description = "Add your description here"
+description = "Reinforcement Learning with JAX - PPO implementations for MuJoCo"
 readme = "README.md"
 requires-python = ">=3.13"
 dependencies = [
@@ -16,4 +20,8 @@ dependencies = [
     "ruff>=0.14.0",
     "tqdm>=4.67.1",
     "wandb>=0.22.2",
+    "warp-lang>=1.9.1",
 ]
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/rlx"]

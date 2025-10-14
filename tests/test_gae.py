@@ -11,7 +11,7 @@ import numpy as np
 # Add src to path for imports
 sys.path.insert(0, str(Path(__file__).parent.parent / "src"))
 
-from rlx.ppo_gym import compute_gae
+from rlx.ppo_gymnasium import compute_gae
 
 
 def test_gae_correctness():

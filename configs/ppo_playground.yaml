@@ -1,0 +1,54 @@
+# PPO for MuJoCo Playground Configuration
+defaults:
+  - override hydra/hydra_logging: disabled
+  - override hydra/job_logging: disabled
+ 
+hydra:
+  run:
+    dir: .
+  output_subdir: null
+
+# Environment
+env_id: "CheetahRun"  # MuJoCo Playground environments: CheetahRun, HopperHop, WalkerWalk, etc.
+num_envs: 2048  # Large batch for MJX performance
+
+# Training
+total_timesteps: 10000000
+num_steps: 20  # Shorter rollout length for MJX (faster iteration)
+batch_size: 512  # Minibatch size for training
+update_epochs: 4  # Number of epochs per update (lower than gym due to larger batches)
+
+# PPO hyperparameters (tuned for MJX continuous control)
+learning_rate: 3e-4
+anneal_lr: false  # Typically not needed with MJX
+gamma: 0.97  # Slightly lower for shorter episodes
+gae_lambda: 0.95
+clip_coef: 0.2
+clip_vloss: true
+ent_coef: 0.01  # Entropy coefficient for exploration
+vf_coef: 0.5  # Value function coefficient
+max_grad_norm: 1.0
+target_kl: null  # Set to 0.015 for early stopping based on KL divergence
+
+# Network architecture
+# Separate architectures for actor and critic (common in continuous control)
+actor_hidden_sizes: [128, 128, 128, 128]  # Actor/policy network layers
+critic_hidden_sizes: [256, 256, 256, 256, 256]  # Critic/value network layers (deeper)
+# Activation functions (Options: tanh, relu, swish, elu, gelu)
+actor_activation: "swish"  # Swish works well with MJX
+critic_activation: "swish"
+
+# Normalization
+norm_adv: true  # Normalize advantages (important for continuous control)
+
+# Logging
+log_frequency: 10  # Log every N iterations
+use_wandb: false
+wandb_project: "ppo-playground"
+seed: 42
+
+# Checkpointing
+save_model: false  # Save model checkpoints
+checkpoint_dir: "checkpoints"
+checkpoint_frequency: 100  # Save checkpoint every N iterations
+keep_checkpoints: 3  # Number of checkpoints to keep

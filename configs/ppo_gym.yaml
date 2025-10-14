@@ -27,7 +27,7 @@ gamma: 0.99
 gae_lambda: 0.95
 clip_coef: 0.2
 clip_vloss: true
-ent_coef: 0.01  # 0.01 for more exploration
+ent_coef: 0.0  # 0.01 for more exploration
 vf_coef: 0.5    # value function
 max_grad_norm: 0.5
 target_kl: null  # set to 0.015 for early stopping based on KL divergence

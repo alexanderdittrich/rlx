@@ -21,10 +21,9 @@ warnings.filterwarnings("ignore", message=".*UnsupportedFieldAttributeWarning.*"
 import os
 import re
 import time
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from datetime import datetime
 from pathlib import Path
-from typing import NamedTuple
 
 import distrax
 import gymnasium as gym
@@ -44,7 +43,6 @@ xla_flags += " --xla_gpu_triton_gemm_any=True"
 os.environ["XLA_FLAGS"] = xla_flags
 os.environ["XLA_PYTHON_CLIENT_PREALLOCATE"] = "false"
 os.environ["MUJOCO_GL"] = "egl"
-jax.config.update("jax_default_matmul_precision", "highest")
 
 # Timestamp format for run IDs
 TIMESTAMP_FORMAT = "%Y%m%d_%H%M%S"
@@ -129,20 +127,6 @@ class PPOConfig:
 
 
 # ---------------------------
-# Rollout Storage
-# ---------------------------
-class RolloutBatch(NamedTuple):
-    obs: jax.Array
-    actions: jax.Array
-    logprobs: jax.Array
-    rewards: jax.Array
-    dones: jax.Array
-    values: jax.Array
-
-
-# ---------------------------
-# Networks
-# ---------------------------
 # Networks
 # ---------------------------
 def _build_mlp(
@@ -175,7 +159,7 @@ def _build_mlp(
             nnx.Linear(
                 current_size,
                 hidden_size,
-                kernel_init=nnx.initializers.orthogonal(scale=np.sqrt(2)),
+                kernel_init=nnx.initializers.orthogonal(scale=jnp.sqrt(2)),
                 bias_init=nnx.initializers.constant(0.0),
                 rngs=rngs,
             )
@@ -349,8 +333,50 @@ class ActorCritic(nnx.Module):
 
 
 # ---------------------------
+# Jitted inference functions
+# ---------------------------
+@jax.jit
+def predict_action_and_value(
+    model: ActorCritic,
+    obs: jax.Array,
+    key: jax.Array,
+) -> tuple[jax.Array, jax.Array, jax.Array]:
+    """Jitted function for sampling actions during rollout collection.
+    
+    Args:
+        model: The actor-critic model
+        obs: Observations [batch, ...]
+        key: Random key for action sampling
+        
+    Returns:
+        action: Sampled actions [batch, ...]
+        log_prob: Log probabilities [batch]
+        value: Value estimates [batch]
+    """
+    dist, value = model(obs)
+    action = dist.sample(seed=key)
+    log_prob = dist.log_prob(action)
+    return action, log_prob, value
+
+
+@jax.jit
+def predict_value(model: ActorCritic, obs: jax.Array) -> jax.Array:
+    """Jitted function for computing values (used for bootstrapping).
+    
+    Args:
+        model: The actor-critic model
+        obs: Observations [batch, ...]
+        
+    Returns:
+        value: Value estimates [batch]
+    """
+    return model.get_value(obs)
+
+
+# ---------------------------
 # GAE and advantages
 # ---------------------------
+@jax.jit
 def compute_gae(
     rewards: jax.Array,
     values: jax.Array,
@@ -361,7 +387,7 @@ def compute_gae(
     gae_lambda: float,
 ) -> tuple[jax.Array, jax.Array]:
     """
-    Compute Generalized Advantage Estimation.
+    Compute Generalized Advantage Estimation using jax.lax.scan for efficiency.
 
     Args:
         rewards: [num_steps, num_envs]
@@ -376,24 +402,41 @@ def compute_gae(
         advantages: [num_steps, num_envs]
         returns: [num_steps, num_envs]
     """
+    # Prepare data for backward scan
+    # Append next_value and next_done to the end
+    values_with_next = jnp.concatenate([values, next_value[None, :]], axis=0)
+    dones_with_next = jnp.concatenate([dones, next_done[None, :]], axis=0)
+
+    def scan_fn(gae, t):
+        """Scan function for GAE computation (processes timesteps backwards)."""
+        reward = rewards[t]
+        value = values[t]
+        next_value_t = values_with_next[t + 1]
+        next_nonterminal = 1.0 - dones_with_next[t + 1]
+
+        # TD error: δ_t = r_t + γ * V(s_{t+1}) * (1 - done_{t+1}) - V(s_t)
+        delta = reward + gamma * next_value_t * next_nonterminal - value
+
+        # GAE: A_t = δ_t + γλ * (1 - done_{t+1}) * A_{t+1}
+        gae = delta + gamma * gae_lambda * next_nonterminal * gae
+
+        return gae, gae
+
+    # Scan backwards through time to compute advantages
+    # Start with lastgaelam = 0 and process from last step to first
     num_steps = rewards.shape[0]
-    advantages = jnp.zeros_like(rewards)
-    lastgaelam = 0.0
+    _, advantages = jax.lax.scan(
+        scan_fn,
+        init=jnp.zeros_like(next_value),  # Initial GAE (for step after last)
+        xs=jnp.arange(num_steps - 1, -1, -1),  # Timesteps in reverse order
+    )
 
-    # Compute advantages backwards
-    for t in reversed(range(num_steps)):
-        if t == num_steps - 1:
-            nextnonterminal = 1.0 - next_done
-            nextvalues = next_value
-        else:
-            nextnonterminal = 1.0 - dones[t + 1]
-            nextvalues = values[t + 1]
+    # Reverse advantages back to forward order
+    advantages = advantages[::-1]
 
-        delta = rewards[t] + gamma * nextvalues * nextnonterminal - values[t]
-        lastgaelam = delta + gamma * gae_lambda * nextnonterminal * lastgaelam
-        advantages = advantages.at[t].set(lastgaelam)
-
+    # Returns are advantages + values
     returns = advantages + values
+
     return advantages, returns
 
 
@@ -478,7 +521,7 @@ def train_step(
     ent_coef: float,
     clip_vloss: bool,
 ) -> dict:
-    """Single training step."""
+    """Single training step (advantages should be pre-normalized if needed)."""
     grad_fn = nnx.value_and_grad(ppo_loss, has_aux=True)
     (loss, info), grads = grad_fn(
         model,
@@ -715,7 +758,6 @@ def train(cfg: PPOConfig):
 
     # Training loop
     obs, _ = envs.reset(seed=cfg.seed)
-    next_done = np.zeros(cfg.num_envs, dtype=np.float32)  # Track terminal states
     global_step = 0
     num_updates = 0
 
@@ -726,15 +768,17 @@ def train(cfg: PPOConfig):
         )
 
     # Storage for rollouts
+    # Use NumPy for data that interacts with Gym (CPU-based)
+    next_done = np.zeros(cfg.num_envs, dtype=np.float32)
+
     rollout_obs = np.zeros((cfg.num_steps, cfg.num_envs) + obs_shape, dtype=np.float32)
-    rollout_actions = np.zeros(
-        (cfg.num_steps, cfg.num_envs) + action_space.shape,
-        dtype=np.int32 if model.is_discrete else np.float32,
-    )
-    rollout_logprobs = np.zeros((cfg.num_steps, cfg.num_envs), dtype=np.float32)
+    rollout_actions = np.zeros((cfg.num_steps, cfg.num_envs) + action_space.shape, dtype=np.float32)
     rollout_rewards = np.zeros((cfg.num_steps, cfg.num_envs), dtype=np.float32)
     rollout_dones = np.zeros((cfg.num_steps, cfg.num_envs), dtype=np.float32)
-    rollout_values = np.zeros((cfg.num_steps, cfg.num_envs), dtype=np.float32)
+    
+    # Use JAX arrays for data that never needs to be NumPy (stays on GPU)
+    rollout_logprobs = jnp.zeros((cfg.num_steps, cfg.num_envs), dtype=jnp.float32)
+    rollout_values = jnp.zeros((cfg.num_steps, cfg.num_envs), dtype=jnp.float32)
 
     # Episode tracking
     episode_returns = []
@@ -743,27 +787,29 @@ def train(cfg: PPOConfig):
     start_time = time.time()
 
     for iteration in range(cfg.num_iterations):
-        # Collect rollout
         for step in range(cfg.num_steps):
             global_step += cfg.num_envs
+            # Store in NumPy arrays (mutable, fast in-place updates)
             rollout_obs[step] = obs
             rollout_dones[step] = next_done
 
-            # Sample action
+            # Sample action using jitted function (JAX handles NumPy->GPU transfer automatically)
             key, action_key = jax.random.split(key)
-            obs_jax = jnp.array(obs)
-            action, logprob, _, value = model.get_action_and_value(
-                obs_jax, key=action_key
-            )
+            action, logprob, value = predict_action_and_value(model, obs, action_key)
 
-            rollout_actions[step] = np.array(action)
-            rollout_logprobs[step] = np.array(logprob)
-            rollout_values[step] = np.array(value)
+            # Store action as NumPy (needed for env.step)
+            action_np = np.array(action)
+            rollout_actions[step] = action_np
+            
+            # Store logprobs and values in JAX arrays (stay on GPU, no round-trip)
+            rollout_logprobs = rollout_logprobs.at[step].set(logprob)
+            rollout_values = rollout_values.at[step].set(value)
 
-            # Step environment
-            obs, reward, terminated, truncated, info = envs.step(np.array(action))
+            # Step environment with already-converted action (no additional sync)
+            obs, reward, terminated, truncated, info = envs.step(action_np)
             next_done = terminated | truncated
 
+            # Store rewards in NumPy array
             rollout_rewards[step] = reward
 
             # Log episode stats - gym.make_vec uses "episode" and "_episode" keys
@@ -782,30 +828,36 @@ def train(cfg: PPOConfig):
                         episode_returns.append(env_info["episode"]["r"])
                         episode_lengths.append(env_info["episode"]["l"])
 
-        # Bootstrap value for GAE
-        next_value = model.get_value(jnp.array(obs))
-        next_value = np.array(next_value)
+        # Transfer only NumPy arrays to GPU (logprobs and values already on GPU!)
+        rollout_actions_jax = jnp.array(rollout_actions)
+        rollout_obs_jax = jnp.array(rollout_obs)
+        rollout_rewards_jax = jnp.array(rollout_rewards)
+        rollout_dones_jax = jnp.array(rollout_dones)
+        next_done_jax = jnp.array(next_done)
 
-        # Compute advantages and returns
+        # Bootstrap value for GAE (jitted function handles transfer)
+        next_value = predict_value(model, obs)
+
+        # Compute advantages and returns (logprobs and values already JAX arrays on GPU)
         advantages, returns = compute_gae(
-            jnp.array(rollout_rewards),
-            jnp.array(rollout_values),
-            jnp.array(rollout_dones),
-            jnp.array(next_value),
-            jnp.array(next_done),
+            rollout_rewards_jax,
+            rollout_values,
+            rollout_dones_jax,
+            next_value,
+            next_done_jax,
             cfg.gamma,
             cfg.gae_lambda,
         )
 
         # Flatten batch
-        b_obs = jnp.array(rollout_obs).reshape((-1,) + obs_shape)
-        b_actions = jnp.array(rollout_actions).reshape((-1,) + action_space.shape)
-        b_logprobs = jnp.array(rollout_logprobs).reshape(-1)
+        b_obs = rollout_obs_jax.reshape((-1,) + obs_shape)
+        b_actions = rollout_actions_jax.reshape((-1,) + action_space.shape)
+        b_logprobs = rollout_logprobs.reshape(-1)
         b_advantages = advantages.reshape(-1)
         b_returns = returns.reshape(-1)
-        b_values = jnp.array(rollout_values).reshape(-1)
+        b_values = rollout_values.reshape(-1)
 
-        # Update policy
+        # Update policy - optimized with JAX arrays and deferred metric sync
         update_info = {}
         for epoch in range(cfg.update_epochs):
             # Random permutation for minibatches
@@ -813,10 +865,9 @@ def train(cfg: PPOConfig):
             perm = jax.random.permutation(perm_key, cfg.rollout_buffer_size)
 
             for start in range(0, cfg.rollout_buffer_size, cfg.batch_size):
-                end = start + cfg.batch_size
-                mb_inds = perm[start:end]
+                mb_inds = perm[start:start + cfg.batch_size]
 
-                # Normalize advantages per minibatch
+                # Normalize advantages per minibatch (outside JIT is faster)
                 mb_advantages = b_advantages[mb_inds]
                 if cfg.norm_adv:
                     mb_advantages = (mb_advantages - mb_advantages.mean()) / (
@@ -838,9 +889,9 @@ def train(cfg: PPOConfig):
                     clip_vloss=cfg.clip_vloss,
                 )
 
-                # Accumulate info
+                # Accumulate info (keep as JAX arrays, don't sync yet)
                 for k, v in info.items():
-                    update_info[k] = update_info.get(k, 0) + float(v)
+                    update_info[k] = update_info.get(k, 0.0) + v
 
             # Check KL divergence for early stopping
             if cfg.target_kl is not None:
@@ -853,10 +904,10 @@ def train(cfg: PPOConfig):
 
         num_updates += 1
 
-        # Average update info
+        # Average update info and convert to Python floats (sync happens here once per update)
         num_minibatch_updates = (epoch + 1) * cfg.num_minibatches
         for k in update_info:
-            update_info[k] /= num_minibatch_updates
+            update_info[k] = float(update_info[k] / num_minibatch_updates)
 
         # Logging
         if num_updates % cfg.log_frequency == 0:

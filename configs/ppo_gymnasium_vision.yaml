@@ -1,0 +1,59 @@
+# PPO Configuration for Vision-based Observations (CNN-based)
+# Follows Stable-Baselines3 hyperparameters for Atari environments
+
+# Environment
+env_id: "ALE/Pong-v5"  # Atari environment (requires gymnasium[atari])
+num_envs: 8
+
+# Training
+total_timesteps: 10_000_000
+num_steps: 128  # Rollout length per env
+batch_size: 256  # Minibatch size
+update_epochs: 4  # Number of epochs per update
+
+# PPO hyperparameters (SB3 Atari defaults)
+learning_rate: 2.5e-4
+anneal_lr: true
+lr_schedule_type: "linear"  # linear, exponential, constant
+decay_rate: 0.99
+gamma: 0.99
+gae_lambda: 0.95
+clip_coef: 0.1  # SB3 uses 0.1 for Atari (vs 0.2 for continuous control)
+clip_vloss: true
+ent_coef: 0.01
+vf_coef: 0.5
+max_grad_norm: 0.5
+target_kl: null  # No early stopping by default
+
+# CNN architecture
+cnn_type: "nature"  # "nature" or "impala"
+features_dim: 512  # CNN feature extractor output dimension
+
+# Policy/Value head architecture (after CNN features)
+actor_hidden_sizes: []  # No additional layers after CNN (SB3 default)
+critic_hidden_sizes: []  # No additional layers after CNN (SB3 default)
+actor_activation: "relu"  # SB3 uses ReLU for visual observations
+critic_activation: "relu"
+
+# Normalization
+norm_adv: true  # Normalize advantages
+norm_obs: false  # Don't normalize vision-based observations
+norm_reward: true  # Normalize rewards for Atari
+clip_obs: 10.0
+clip_reward: 10.0
+
+# Frame stacking
+frame_stack: 4  # Stack last N frames (standard for Atari)
+
+# Logging
+log_frequency: 10  # Log every N updates
+use_wandb: false
+wandb_project: "ppo-gymnasium-vision"
+seed: 42
+
+# Checkpointing
+save_model: true
+checkpoint_dir: "checkpoints"
+checkpoint_frequency: 100  # Save every N updates
+keep_checkpoints: 3
+resume_from: null  # Path to checkpoint to resume from

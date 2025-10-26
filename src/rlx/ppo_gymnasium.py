@@ -342,12 +342,12 @@ def predict_action_and_value(
     key: jax.Array,
 ) -> tuple[jax.Array, jax.Array, jax.Array]:
     """Jitted function for sampling actions during rollout collection.
-    
+
     Args:
         model: The actor-critic model
         obs: Observations [batch, ...]
         key: Random key for action sampling
-        
+
     Returns:
         action: Sampled actions [batch, ...]
         log_prob: Log probabilities [batch]
@@ -362,11 +362,11 @@ def predict_action_and_value(
 @jax.jit
 def predict_value(model: ActorCritic, obs: jax.Array) -> jax.Array:
     """Jitted function for computing values (used for bootstrapping).
-    
+
     Args:
         model: The actor-critic model
         obs: Observations [batch, ...]
-        
+
     Returns:
         value: Value estimates [batch]
     """
@@ -772,10 +772,12 @@ def train(cfg: PPOConfig):
     next_done = np.zeros(cfg.num_envs, dtype=np.float32)
 
     rollout_obs = np.zeros((cfg.num_steps, cfg.num_envs) + obs_shape, dtype=np.float32)
-    rollout_actions = np.zeros((cfg.num_steps, cfg.num_envs) + action_space.shape, dtype=np.float32)
+    rollout_actions = np.zeros(
+        (cfg.num_steps, cfg.num_envs) + action_space.shape, dtype=np.float32
+    )
     rollout_rewards = np.zeros((cfg.num_steps, cfg.num_envs), dtype=np.float32)
     rollout_dones = np.zeros((cfg.num_steps, cfg.num_envs), dtype=np.float32)
-    
+
     # Use JAX arrays for data that never needs to be NumPy (stays on GPU)
     rollout_logprobs = jnp.zeros((cfg.num_steps, cfg.num_envs), dtype=jnp.float32)
     rollout_values = jnp.zeros((cfg.num_steps, cfg.num_envs), dtype=jnp.float32)
@@ -800,7 +802,7 @@ def train(cfg: PPOConfig):
             # Store action as NumPy (needed for env.step)
             action_np = np.array(action)
             rollout_actions[step] = action_np
-            
+
             # Store logprobs and values in JAX arrays (stay on GPU, no round-trip)
             rollout_logprobs = rollout_logprobs.at[step].set(logprob)
             rollout_values = rollout_values.at[step].set(value)
@@ -865,7 +867,7 @@ def train(cfg: PPOConfig):
             perm = jax.random.permutation(perm_key, cfg.rollout_buffer_size)
 
             for start in range(0, cfg.rollout_buffer_size, cfg.batch_size):
-                mb_inds = perm[start:start + cfg.batch_size]
+                mb_inds = perm[start : start + cfg.batch_size]
 
                 # Normalize advantages per minibatch (outside JIT is faster)
                 mb_advantages = b_advantages[mb_inds]
@@ -999,18 +1001,17 @@ def train(cfg: PPOConfig):
 # ---------------------------
 def huzzah(cfg):
     print()
-    print("                     0000000                                                    ")
-    print("                     0000000                       0000                         ")
-    print("           000    0000 0000                        0000                         ")
-    print("        00000000000      00             000 00000  0000   0000     0000         ")
-    print("        0000000000        00            00000      0000     000  0000           ")
-    print("        0000000000000   0000000000      000        0000      000000             ")
-    print("          00000      00000000000000     000        0000      000000             ")
-    print("                      00000000000000    000        0000     000  0000           ")
-    print("                      0000000000000     000        0000   0000     0000         ")
-    print("                        0000000000                                              ")
+    print("               666                                     ")
+    print("              66666                 22                 ")
+    print("       88   999666                  22                 ")
+    print("    88888888     66        2222222  22   22   222      ")
+    print("    88888888     55555     222      22    222222       ")
+    print("      88888  55555555555   222      22     2222        ")
+    print("              5555555555   222      22   222  22       ")
+    print("               555555555   222      22  222    222     ")
+    print("                  555                                  ")
     print()
-    print("oooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooo")
+    print("ooooooooooooooooooooooooooooooooooooooooooooooooooooooo")
     print()
     print(f"Environment: \t\t{cfg.env_id}")
     print(f"Algorithm: \t\tPPO")
@@ -1019,8 +1020,8 @@ def huzzah(cfg):
     print(f"# timesteps: \t\t{cfg.total_timesteps}")
     print(f"Logging directory: \t{cfg.checkpoint_dir}")
     print()
-                                                                                          
-                                                                                          
+
+
 # ---------------------------
 # Hydra entry point
 # ---------------------------

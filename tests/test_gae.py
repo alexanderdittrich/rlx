@@ -179,20 +179,22 @@ def test_gae_performance():
     # Verify results match
     adv_match = jnp.allclose(adv_opt, adv_loop, rtol=1e-5)
     ret_match = jnp.allclose(ret_opt, ret_loop, rtol=1e-5)
-    
+
     assert adv_match, "Optimized and loop versions produce different advantages"
     assert ret_match, "Optimized and loop versions produce different returns"
-    
+
     # Calculate max difference
     max_adv_diff = jnp.abs(adv_opt - adv_loop).max()
     max_ret_diff = jnp.abs(ret_opt - ret_loop).max()
 
     speedup = time_loop / time_opt
     print(f"✓ GAE performance test passed")
-    print(f"  Optimized (scan): {time_opt*1000:.1f}ms")
-    print(f"  Loop version:     {time_loop*1000:.1f}ms")
+    print(f"  Optimized (scan): {time_opt * 1000:.1f}ms")
+    print(f"  Loop version:     {time_loop * 1000:.1f}ms")
     print(f"  Speedup:          {speedup:.1f}x faster")
-    print(f"  Results match:    max_diff={max_adv_diff:.2e} (advantages), {max_ret_diff:.2e} (returns)")
+    print(
+        f"  Results match:    max_diff={max_adv_diff:.2e} (advantages), {max_ret_diff:.2e} (returns)"
+    )
 
 
 if __name__ == "__main__":

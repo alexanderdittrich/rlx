@@ -91,6 +91,9 @@ class PPOConfig:
     critic_hidden_sizes: list[int] | None = None
     actor_activation: str = "swish"
     critic_activation: str = "swish"
+    
+    # Action distribution
+    action_distribution: str = "tanh_normal"  # "normal" or "tanh_normal"
 
     # Normalization & Scaling
     norm_adv: bool = True
@@ -137,6 +140,7 @@ class Transition(NamedTuple):
     value: jax.Array
     reward: jax.Array
     done: jax.Array
+    truncation: jax.Array  # 1 if episode truncated (time limit), 0 otherwise
 
 
 # ---------------------------
@@ -225,12 +229,12 @@ class ActorCritic(nnx.Module):
         # Learnable log std for actions
         self.action_logstd = nnx.Param(jnp.zeros(action_size))
 
-        # Critic network
+        # Critic network (use small output scale for stable initialization)
         self.value_net = _build_mlp(
             obs_size,
             critic_hidden_sizes,
             1,
-            output_scale=1.0,
+            output_scale=0.01,  # Small scale to prevent large initial value predictions
             activation_fn=critic_activation_fn,
             rngs=rngs,
         )
@@ -304,19 +308,23 @@ def compute_gae(
     rewards: jax.Array,
     values: jax.Array,
     dones: jax.Array,
+    truncations: jax.Array,
     next_value: jax.Array,
-    next_done: jax.Array,
     gamma: float,
     gae_lambda: float,
 ) -> tuple[jax.Array, jax.Array]:
     """Compute GAE advantages and returns using lax.scan.
+    
+    CRITICAL: This matches Brax's GAE implementation which distinguishes between:
+    - truncation: Episode hit time limit (bootstrap value)
+    - termination: Episode truly ended (don't bootstrap)
 
     Args:
         rewards: [num_steps, num_envs]
         values: [num_steps, num_envs]
-        dones: [num_steps, num_envs]
-        next_value: [num_envs]
-        next_done: [num_envs]
+        dones: [num_steps, num_envs] - true episode end signal
+        truncations: [num_steps, num_envs] - 1 if time limit, 0 if true end
+        next_value: [num_envs] - bootstrap value
         gamma: Discount factor
         gae_lambda: GAE lambda parameter
 
@@ -324,29 +332,42 @@ def compute_gae(
         advantages: [num_steps, num_envs]
         returns: [num_steps, num_envs]
     """
-    num_steps = rewards.shape[0]
+    # Compute termination: episode ended but NOT due to time limit
+    # termination = done AND NOT truncated
+    terminations = dones * (1 - truncations)
+    
+    # Truncation mask: if truncated, don't mask (allow bootstrapping)
+    truncation_mask = 1 - truncations
+    
+    # Compute values_t_plus_1 for TD error
+    # Append bootstrap value to get [v1, ..., v_t+1]
+    values_t_plus_1 = jnp.concatenate(
+        [values[1:], jnp.expand_dims(next_value, 0)], axis=0
+    )
+    
+    # TD deltas: δ_t = r_t + γ * V(s_{t+1}) * (1 - termination) - V(s_t)
+    # Only mask by termination (true episode end), not truncation
+    deltas = rewards + gamma * (1 - terminations) * values_t_plus_1 - values
+    deltas *= truncation_mask  # Zero out if truncated
 
     def scan_fn(carry, step_data):
-        next_value, next_advantage = carry
-        reward, value, done = step_data
-
-        # TD error: δ_t = r_t + γ * V(s_{t+1}) * (1 - done_{t+1}) - V(s_t)
-        delta = reward + gamma * next_value * (1 - done) - value
-
-        # GAE: A_t = δ_t + γ * λ * (1 - done_{t+1}) * A_{t+1}
-        advantage = delta + gamma * gae_lambda * (1 - done) * next_advantage
-
-        return (value, advantage), advantage
+        lambda_, next_advantage = carry
+        truncation_mask_t, delta_t, termination_t = step_data
+        
+        # GAE accumulation: A_t = δ_t + γ * λ * (1 - termination) * mask * A_{t+1}
+        advantage = delta_t + gamma * (1 - termination_t) * truncation_mask_t * lambda_ * next_advantage
+        
+        return (lambda_, advantage), advantage
 
     # Scan backward through time
     _, advantages = jax.lax.scan(
         scan_fn,
-        (next_value, jnp.zeros_like(next_value)),
-        (rewards, values, dones),
+        (gae_lambda, jnp.zeros_like(next_value)),
+        (truncation_mask, deltas, terminations),
         reverse=True,
     )
 
-    # Returns are advantages + values
+    # Returns: v_s = A_s + V(s)
     returns = advantages + values
 
     return advantages, returns
@@ -551,6 +572,14 @@ def train(cfg: PPOConfig):
     obs_mean = initial_obs.mean(axis=0)
     obs_var = initial_obs.var(axis=0) + 1e-8
     print(f"Observation normalization initialized: mean shape={obs_mean.shape}, var shape={obs_var.shape}")
+    print(f"Initial obs stats: mean={float(initial_obs.mean()):.3f}, std={float(initial_obs.std()):.3f}, min={float(initial_obs.min()):.3f}, max={float(initial_obs.max()):.3f}")
+    
+    # Test a single step to see reward scale
+    test_key = jax.random.PRNGKey(999)
+    test_action = jax.random.normal(test_key, (cfg.num_envs, action_size))
+    test_state = env.step(env_state, test_action)
+    print(f"Test step rewards: mean={float(test_state.reward.mean()):.6f}, std={float(test_state.reward.std()):.6f}, max={float(test_state.reward.max()):.6f}")
+    print(f"Reward range in test: [{float(test_state.reward.min()):.6f}, {float(test_state.reward.max()):.6f}]")
 
     global_step = 0
 
@@ -572,6 +601,11 @@ def train(cfg: PPOConfig):
             # Step environment (wrapper already handles vectorization)
             next_env_state = env.step(env_state, action)
 
+            # Extract truncation from state.info (Brax wrapper provides this)
+            # truncation=1 when episode hit time limit (bootstrap value)
+            # truncation=0 when episode truly ended (agent failed)
+            truncation = next_env_state.info.get('truncation', jnp.zeros_like(next_env_state.done))
+            
             # Create transition (apply reward scaling)
             transition = Transition(
                 obs=env_state.obs,
@@ -580,6 +614,7 @@ def train(cfg: PPOConfig):
                 value=value,
                 reward=next_env_state.reward * cfg.reward_scaling,
                 done=next_env_state.done,
+                truncation=truncation,
             )
             
             carry = (next_env_state, key)
@@ -610,12 +645,13 @@ def train(cfg: PPOConfig):
         obs_normalized = normalize_obs(obs, mean, var)
 
         # Compute advantages and returns
+        # CRITICAL: Pass truncation signal to properly bootstrap at time limits
         advantages, returns = compute_gae(
             transitions.reward,
             transitions.value,
             transitions.done,
+            transitions.truncation,
             next_value,
-            jnp.zeros_like(next_value),  # Assume not done after rollout
             cfg.gamma,
             cfg.gae_lambda,
         )
@@ -734,18 +770,29 @@ def train(cfg: PPOConfig):
         iter_time = time.time() - iter_start_time
         sps = cfg.rollout_buffer_size / iter_time
 
-        # Calculate episode metrics from transitions
-        # Mean reward per step across all environments
+        # Extract episode metrics from environment state (Brax wrapper tracks these)
+        # The wrapper auto-resets and accumulates episode returns in state.info
+        episode_metrics = {}
+        if hasattr(env_state, 'info') and 'episode_metrics' in env_state.info:
+            metrics_dict = env_state.info['episode_metrics']
+            if 'episode_reward' in metrics_dict:
+                completed_episodes = metrics_dict['episode_reward']
+                # Get mean of completed episodes (filter out zeros for incomplete)
+                completed_mask = completed_episodes > 0
+                if completed_mask.sum() > 0:
+                    episode_metrics['episode_reward'] = float(completed_episodes[completed_mask].mean())
+                    episode_metrics['num_completed'] = int(completed_mask.sum())
+        
+        # Calculate per-step metrics from transitions  
         mean_reward = float(transitions.reward.mean())
         max_reward = float(transitions.reward.max())
         min_reward = float(transitions.reward.min())
         std_reward = float(transitions.reward.std())
         
-        # Estimate episode return (mean reward * typical episode length)
-        episode_return_estimate = (
-            mean_reward * 1000
-        )  # Approximate for 1000 step episodes
-
+        # Estimate episode return from per-step rewards (rough approximation)
+        # Real episode tracking would require more complex logic
+        episode_return_estimate = mean_reward * 1000  # Assuming 1000 step episodes
+        
         # Logging
         if iteration % cfg.log_frequency == 0:
             elapsed_time = time.time() - start_time
@@ -753,15 +800,19 @@ def train(cfg: PPOConfig):
             print(f"  Global step: {global_step}/{cfg.total_timesteps}")
             print(f"  SPS: {sps:.0f}")
             print(f"  Elapsed: {elapsed_time:.1f}s")
-            print(f"  Rewards - mean: {mean_reward:.6f}, std: {std_reward:.6f}, min: {min_reward:.6f}, max: {max_reward:.6f}")
-            print(f"  Est. episode return: {episode_return_estimate:.1f}")
+            
+            # Print episode metrics if available
+            if episode_metrics:
+                print(f"  Episode reward (completed): {episode_metrics.get('episode_reward', 0):.1f} ({episode_metrics.get('num_completed', 0)} episodes)")
+            
+            print(f"  Per-step rewards - mean: {mean_reward:.6f}, std: {std_reward:.6f}, max: {max_reward:.6f}")
             print(f"  Policy loss: {update_metrics['loss/policy']:.4f}")
             print(f"  Value loss: {update_metrics['loss/value']:.4f}")
             print(f"  Entropy: {update_metrics['loss/entropy']:.4f}")
             print(f"  Approx KL: {update_metrics['loss/approx_kl']:.4f}")
             print(f"  Clip frac: {update_metrics['loss/clipfrac']:.4f}")
             
-            # Also print diagnostic info about observations and actions
+            # Diagnostic info
             print(f"  Obs - mean: {transitions.obs.mean():.4f}, std: {transitions.obs.std():.4f}")
             print(f"  Actions - mean: {transitions.action.mean():.4f}, std: {transitions.action.std():.4f}")
             print(f"  Values - mean: {transitions.value.mean():.4f}, std: {transitions.value.std():.4f}")

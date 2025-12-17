@@ -8,37 +8,47 @@ hydra:
     dir: .
   output_subdir: null
 
-# Environment (Brax defaults)
+# Environment
 env_id: "CheetahRun"
-num_envs: 2048  # Brax default for MJX
+num_envs: 8192 
 
-# Training (Brax defaults)
+# Training setting
 total_timesteps: 100000000
-num_steps: 10  # Brax default: unroll_length
-batch_size: 1280  # Minibatch size (rollout_buffer_size / num_minibatches = 20480 / 16)
-update_epochs: 2  # Brax default: num_updates_per_batch
+num_steps: 20  # Match Brax: unroll_length = 20  
+batch_size: 256  # Match Brax: minibatch size = 256 (NOT total batch!)
+update_epochs: 4  # Match Brax: num_updates_per_batch = 4
+# NOTE: Brax's batch_size is the MINIBATCH size, not total batch
+# Total samples per update = batch_size * num_minibatches = 256 * 32 = 8192
+# Your rollout_buffer_size = num_envs * num_steps = 8192 * 20 = 163840
+# num_minibatches = rollout_buffer_size / batch_size = 163840 / 256 = 640
 
-# PPO hyperparameters (Brax defaults)
-learning_rate: 1e-4  # Brax default
+# PPO hyperparameters
+learning_rate: 0.0003
 anneal_lr: false
-gamma: 0.9  # Brax default: discounting
-gae_lambda: 0.95  # Brax default
-clip_coef: 0.3  # Brax default: clipping_epsilon
-clip_vloss: false  # Brax default: clipping_epsilon_value=None
-ent_coef: 1e-4  # Brax default: entropy_cost
-vf_coef: 0.5  # Brax default: vf_loss_coefficient
-max_grad_norm: null  # Brax default: None (no clipping)
+gamma: 0.97
+gae_lambda: 0.95
+clip_coef: 0.2
+clip_vloss: false
+ent_coef: 0.01
+vf_coef: 0.5
+max_grad_norm: 1.0
 target_kl: null
-reward_scaling: 1.0  # Brax default
+reward_scaling: 1.0
 
-# Network architecture (Brax defaults)
-actor_hidden_sizes: [32, 32, 32, 32]  # Brax default: (32,)*4
-critic_hidden_sizes: [256, 256, 256, 256, 256]  # Brax default: (256,)*5
-actor_activation: "swish"  # Brax default
+# Network architecture
+actor_hidden_sizes: [512, 256, 128] 
+critic_hidden_sizes: [512, 256, 128]
+actor_activation: "swish"
 critic_activation: "swish"
 
 # Normalization
-norm_adv: true  # Normalize advantages (important for continuous control)
+norm_adv: true
+norm_obs: true
+
+# WARNING: Functional discrepancies vs working Brax implementation:
+# 1. Action distribution: Brax uses 'tanh_normal' (bounded), this uses 'normal' (unbounded)
+# 2. Asymmetric obs: Brax uses policy_obs_key='state', value_obs_key='privileged_state'
+#    This implementation doesn't support dictionary observations (critic can't see extra info)
 
 # Logging
 log_frequency: 10  # Log every N iterations

@@ -8,34 +8,33 @@ hydra:
     dir: .
   output_subdir: null
 
-# Environment
-env_id: "CheetahRun"  # MuJoCo Playground environments: CheetahRun, HopperHop, WalkerWalk, etc.
-num_envs: 2048  # Large batch for MJX performance
+# Environment (Brax defaults)
+env_id: "CheetahRun"
+num_envs: 2048  # Brax default for MJX
 
-# Training
-total_timesteps: 10000000
-num_steps: 20  # Shorter rollout length for MJX (faster iteration)
-batch_size: 512  # Minibatch size for training
-update_epochs: 4  # Number of epochs per update (lower than gym due to larger batches)
+# Training (Brax defaults)
+total_timesteps: 100000000
+num_steps: 10  # Brax default: unroll_length
+batch_size: 1280  # Minibatch size (rollout_buffer_size / num_minibatches = 20480 / 16)
+update_epochs: 2  # Brax default: num_updates_per_batch
 
-# PPO hyperparameters (tuned for MJX continuous control)
-learning_rate: 3e-4
-anneal_lr: false  # Typically not needed with MJX
-gamma: 0.97  # Slightly lower for shorter episodes
-gae_lambda: 0.95
-clip_coef: 0.2
-clip_vloss: true
-ent_coef: 0.01  # Entropy coefficient for exploration
-vf_coef: 0.5  # Value function coefficient
-max_grad_norm: 1.0
-target_kl: null  # Set to 0.015 for early stopping based on KL divergence
+# PPO hyperparameters (Brax defaults)
+learning_rate: 1e-4  # Brax default
+anneal_lr: false
+gamma: 0.9  # Brax default: discounting
+gae_lambda: 0.95  # Brax default
+clip_coef: 0.3  # Brax default: clipping_epsilon
+clip_vloss: false  # Brax default: clipping_epsilon_value=None
+ent_coef: 1e-4  # Brax default: entropy_cost
+vf_coef: 0.5  # Brax default: vf_loss_coefficient
+max_grad_norm: null  # Brax default: None (no clipping)
+target_kl: null
+reward_scaling: 1.0  # Brax default
 
-# Network architecture
-# Separate architectures for actor and critic (common in continuous control)
-actor_hidden_sizes: [128, 128, 128, 128]  # Actor/policy network layers
-critic_hidden_sizes: [256, 256, 256, 256, 256]  # Critic/value network layers (deeper)
-# Activation functions (Options: tanh, relu, swish, elu, gelu)
-actor_activation: "swish"  # Swish works well with MJX
+# Network architecture (Brax defaults)
+actor_hidden_sizes: [32, 32, 32, 32]  # Brax default: (32,)*4
+critic_hidden_sizes: [256, 256, 256, 256, 256]  # Brax default: (256,)*5
+actor_activation: "swish"  # Brax default
 critic_activation: "swish"
 
 # Normalization

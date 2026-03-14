@@ -11,6 +11,9 @@ Usage:
 
 import argparse
 from pathlib import Path
+import sys
+
+sys.path.insert(0, str(Path(__file__).parent.parent / "src"))
 
 import gymnasium as gym
 import jax
@@ -18,12 +21,8 @@ import jax.numpy as jnp
 import numpy as np
 from flax import nnx
 
-# Import from the PPO vision module
-import sys
 
-sys.path.insert(0, str(Path(__file__).parent.parent / "src"))
-
-from rlx.ppo_gymnasium_vision import ActorCriticCNN, PPOVisionConfig, get_activation_fn
+from rlx.gymnasium.ppo_vision import ActorCriticCNN, PPOVisionConfig, get_activation_fn
 import orbax.checkpoint as ocp
 from omegaconf import OmegaConf
 

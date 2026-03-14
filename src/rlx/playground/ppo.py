@@ -1,13 +1,13 @@
 """
 PPO for MuJoCo Playground with JAX Flax NNX and Optax.
 
-Portions of this file are adapted from Brax 
-(https://github.com/google/brax), 
+Portions of this file are adapted from Brax
+(https://github.com/google/brax),
 Copyright 2022 The Brax Authors,
 licensed under the Apache License, Version 2.0
 (http://www.apache.org/licenses/LICENSE-2.0).
 
-Changes: 
+Changes:
 Ported to Flax NNX; single-file-oriented code structure,
 hydra-config management, obs normalization warm-up.
 """
@@ -791,7 +791,7 @@ def train(cfg: PPOConfig, resume_from: str | None = None):
         else None
     )
 
-    for iteration in (pbar if pbar is not None else iterations):
+    for iteration in pbar if pbar is not None else iterations:
         (env_state, actor_stats, critic_stats, combined_state, key, metrics, batch) = (
             train_iteration(env_state, actor_stats, critic_stats, key, combined_state)
         )

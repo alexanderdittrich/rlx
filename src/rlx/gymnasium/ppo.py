@@ -27,7 +27,6 @@ from pathlib import Path
 
 import distrax
 import gymnasium as gym
-import hydra
 import jax
 import jax.numpy as jnp
 import numpy as np
@@ -35,7 +34,6 @@ import optax
 import orbax.checkpoint as ocp
 import wandb
 from flax import nnx
-from omegaconf import DictConfig, OmegaConf
 
 # Set GPU parameters
 xla_flags = os.environ.get("XLA_FLAGS", "")
@@ -994,45 +992,3 @@ def train(cfg: PPOConfig):
         wandb.finish()
 
     print(f"\nTraining completed in {time.time() - start_time:.1f}s")
-
-
-# ---------------------------
-# Huzzah banner
-# ---------------------------
-def huzzah(cfg):
-    print()
-    print("               666                                     ")
-    print("              66666                 22                 ")
-    print("       88   999666                  22                 ")
-    print("    88888888     66        2222222  22   22   222      ")
-    print("    88888888     55555     222      22    222222       ")
-    print("      88888  55555555555   222      22     2222        ")
-    print("              5555555555   222      22   222  22       ")
-    print("               555555555   222      22  222    222     ")
-    print("                  555                                  ")
-    print()
-    print("ooooooooooooooooooooooooooooooooooooooooooooooooooooooo")
-    print()
-    print(f"Environment: \t\t{cfg.env_id}")
-    print(f"Algorithm: \t\tPPO")
-    print(f"Random Seed: \t\t{cfg.seed}")
-    print(f"# envs: \t\t{cfg.num_envs}")
-    print(f"# timesteps: \t\t{cfg.total_timesteps}")
-    print(f"Logging directory: \t{cfg.checkpoint_dir}")
-    print()
-
-
-# ---------------------------
-# Hydra entry point
-# ---------------------------
-@hydra.main(version_base=None, config_path="../../configs", config_name="ppo_gymnasium")
-def main(cfg: DictConfig):
-    """Main entry point."""
-    # Convert OmegaConf to dataclass
-    ppo_cfg = PPOConfig(**OmegaConf.to_container(cfg, resolve=True))
-    huzzah(ppo_cfg)
-    train(ppo_cfg)
-
-
-if __name__ == "__main__":
-    main()

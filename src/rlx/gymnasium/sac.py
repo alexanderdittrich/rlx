@@ -15,6 +15,7 @@ from __future__ import annotations
 # Suppress warnings before imports
 import os
 import warnings
+
 os.environ["JAX_PLATFORMS"] = "cpu"
 
 warnings.filterwarnings("ignore", category=UserWarning, module="pydantic")
@@ -27,16 +28,14 @@ from dataclasses import dataclass
 from datetime import datetime
 from pathlib import Path
 
-import distrax
 import gymnasium as gym
-import hydra
 import jax
 import jax.numpy as jnp
 import numpy as np
 import optax
 import orbax.checkpoint as ocp
 from flax import nnx
-from omegaconf import DictConfig, OmegaConf
+from omegaconf import OmegaConf
 
 # Set GPU parameters
 xla_flags = os.environ.get("XLA_FLAGS", "")
@@ -76,7 +75,7 @@ class SACConfig:
 
     # Replay buffer
     buffer_size: int = 1_000_000
-    
+
     # Network architecture
     actor_hidden_sizes: list[int] | None = None  # Actor/policy network hidden layers
     critic_hidden_sizes: list[int] | None = None  # Critic/Q network hidden layers
@@ -198,7 +197,7 @@ LOG_STD_MAX = 2
 
 class SquashedGaussianActor(nnx.Module):
     """Squashed Gaussian policy network for continuous action spaces.
-    
+
     Outputs mean and log_std, samples actions from Gaussian, then applies tanh squashing.
     """
 
@@ -231,7 +230,7 @@ class SquashedGaussianActor(nnx.Module):
             bias_init=nnx.initializers.constant(0.0),
             rngs=rngs,
         )
-        
+
         self.log_std_layer = nnx.Linear(
             hidden_sizes[-1],
             action_dim,
@@ -275,7 +274,7 @@ class SquashedGaussianActor(nnx.Module):
             log_prob: Log probability of the action [batch]
         """
         mean, log_std = self(x)
-        
+
         if deterministic:
             # Use mean action for evaluation
             action = jnp.tanh(mean)
@@ -285,10 +284,10 @@ class SquashedGaussianActor(nnx.Module):
             # Sample from Gaussian
             std = jnp.exp(log_std)
             normal_sample = mean + std * jax.random.normal(key, mean.shape)
-            
+
             # Apply tanh squashing
             action = jnp.tanh(normal_sample)
-            
+
             # Compute log probability with tanh correction
             # log π(a|s) = log μ(u|s) - Σ log(1 - tanh²(u))
             log_prob = -0.5 * (
@@ -304,7 +303,7 @@ class SquashedGaussianActor(nnx.Module):
 
 class QNetwork(nnx.Module):
     """Q-network (critic) for SAC.
-    
+
     Takes observation and action as input, outputs Q-value.
     """
 
@@ -386,7 +385,7 @@ class SACNetworks(nnx.Module):
 
 class CriticPair(nnx.Module):
     """Container for the two trainable Q-networks (for optimizer)."""
-    
+
     def __init__(self, qf1: QNetwork, qf2: QNetwork):
         self.qf1 = qf1
         self.qf2 = qf2
@@ -394,7 +393,7 @@ class CriticPair(nnx.Module):
 
 class Alpha(nnx.Module):
     """Temperature parameter (alpha) for SAC.
-    
+
     Simple module wrapping log_alpha to work with nnx.Optimizer.
     Follows Brax SAC structure.
     """
@@ -559,7 +558,7 @@ def update_alpha(
     key: jax.Array,
 ) -> tuple[jax.Array, dict[str, jax.Array]]:
     """Update temperature parameter alpha.
-    
+
     Following Brax SAC implementation.
     """
 
@@ -710,9 +709,9 @@ def train(cfg: SACConfig):
     envs = gym.wrappers.vector.RecordEpisodeStatistics(envs)
 
     # SAC only works with continuous action spaces
-    assert isinstance(
-        envs.single_action_space, gym.spaces.Box
-    ), "SAC only supports continuous action spaces"
+    assert isinstance(envs.single_action_space, gym.spaces.Box), (
+        "SAC only supports continuous action spaces"
+    )
 
     # Normalize action space to [-1, 1]
     envs = gym.wrappers.vector.RescaleAction(envs, -1, 1)
@@ -800,7 +799,9 @@ def train(cfg: SACConfig):
     if cfg.use_wandb:
         import wandb
 
-        wandb.init(project=cfg.wandb_project, name=run_id, config=OmegaConf.to_container(cfg))
+        wandb.init(
+            project=cfg.wandb_project, name=run_id, config=OmegaConf.to_container(cfg)
+        )
 
     # Training loop
     obs, _ = envs.reset(seed=cfg.seed)
@@ -815,9 +816,6 @@ def train(cfg: SACConfig):
     episode_lengths = deque(maxlen=100)
 
     start_time = time.time()
-
-    # Print header
-    huzzah(cfg)
 
     while global_step < cfg.total_timesteps:
         # Collect experience
@@ -860,7 +858,13 @@ def train(cfg: SACConfig):
             # Update critics
             key, critic_key = jax.random.split(key)
             critic_info = update_critic(
-                networks, critic_pair, critic_optimizer, batch, alpha, cfg.gamma, critic_key
+                networks,
+                critic_pair,
+                critic_optimizer,
+                batch,
+                alpha,
+                cfg.gamma,
+                critic_key,
             )
 
             # Update actor
@@ -896,7 +900,7 @@ def train(cfg: SACConfig):
             # Logging
             if global_step % cfg.log_frequency == 0:
                 sps = int(global_step / (time.time() - start_time))
-                
+
                 metrics = {
                     "global_step": global_step,
                     "sps": sps,
@@ -931,7 +935,7 @@ def train(cfg: SACConfig):
                 checkpoint_metrics = {}
                 if len(episode_returns) > 0:
                     checkpoint_metrics["return_mean"] = float(np.mean(episode_returns))
-                
+
                 save_checkpoint(
                     checkpoint_manager,
                     networks,
@@ -947,7 +951,7 @@ def train(cfg: SACConfig):
         checkpoint_metrics = {}
         if len(episode_returns) > 0:
             checkpoint_metrics["return_mean"] = float(np.mean(episode_returns))
-        
+
         save_checkpoint(
             checkpoint_manager,
             networks,
@@ -964,43 +968,3 @@ def train(cfg: SACConfig):
         wandb.finish()
 
     print(f"\nTraining completed in {time.time() - start_time:.1f}s")
-
-
-# ---------------------------
-# Huzzah banner
-# ---------------------------
-def huzzah(cfg):
-    print()
-    print("               666                                     ")
-    print("              66666                 22                 ")
-    print("       88   999666                  22                 ")
-    print("    88888888     66        2222222  22   22   222      ")
-    print("    88888888     55555     222      22    222222       ")
-    print("      88888  55555555555   222      22     2222        ")
-    print("              5555555555   222      22   222  22       ")
-    print("               555555555   222      22  222    222     ")
-    print("                  555                                  ")
-    print()
-    print("ooooooooooooooooooooooooooooooooooooooooooooooooooooooo")
-    print()
-    print(f"Environment: \t\t{cfg.env_id}")
-    print(f"Algorithm: \t\tSAC")
-    print(f"Random Seed: \t\t{cfg.seed}")
-    print(f"# envs: \t\t{cfg.num_envs}")
-    print(f"# timesteps: \t\t{cfg.total_timesteps}")
-    print(f"Logging directory: \t{cfg.checkpoint_dir}")
-    print()
-
-
-# ---------------------------
-# Hydra entry point
-# ---------------------------
-@hydra.main(version_base=None, config_path="../../configs", config_name="sac_gymnasium")
-def main(cfg: DictConfig):
-    # Convert DictConfig to SACConfig dataclass
-    sac_cfg = SACConfig(**cfg)
-    train(sac_cfg)
-
-
-if __name__ == "__main__":
-    main()

@@ -34,7 +34,7 @@ import optax
 import wandb
 from flax import nnx
 from mujoco_playground import registry, wrapper
-from rlx import running_statistics
+from rlx.common import running_statistics
 
 xla_flags = os.environ.get("XLA_FLAGS", "")
 xla_flags += " --xla_gpu_triton_gemm_any=True"

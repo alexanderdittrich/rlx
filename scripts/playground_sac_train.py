@@ -9,7 +9,7 @@ warnings.filterwarnings("ignore", message=".*warp.math.*")
 import hydra
 from omegaconf import DictConfig, OmegaConf
 
-from rlx.playground.ppo import PPOConfig, train
+from rlx.playground.sac import SACConfig, train
 
 
 # ---------------------------
@@ -27,7 +27,7 @@ def huzzah(cfg):
     print("               555555555   222      22  222    222     ")
     print("                  555                                  ")
     print("\n" + "=" * 54)
-    print(f"  Algorithm: \t\tPPO")
+    print(f"  Algorithm: \t\tSAC")
     print(f"  Environment: \t\t{cfg.env_id}")
     print(f"  # envs: \t\t{cfg.num_envs:,}")
     print(f"  # timesteps: \t\t{cfg.total_timesteps:,}")
@@ -39,13 +39,13 @@ def huzzah(cfg):
 # ---------------------------
 # Hydra Entry Point
 # ---------------------------
-@hydra.main(config_path="../configs", config_name="rlx_ppo", version_base="1.3")
+@hydra.main(config_path="../configs", config_name="sac_playground.yaml", version_base="1.3")
 def main(cfg: DictConfig):
     """Main entry point with Hydra config."""
     # Convert OmegaConf to dataclass
-    ppo_cfg = PPOConfig(**OmegaConf.to_container(cfg, resolve=True))
-    huzzah(ppo_cfg)
-    train(ppo_cfg)
+    sac_cfg = SACConfig(**OmegaConf.to_container(cfg, resolve=True))
+    huzzah(sac_cfg)
+    train(sac_cfg)
 
 
 if __name__ == "__main__":

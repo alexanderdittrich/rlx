@@ -1,56 +1,61 @@
-# SAC NNX Configuration
+# SAC — MuJoCo Playground Configuration
 defaults:
   - override hydra/hydra_logging: disabled
   - override hydra/job_logging: disabled
- 
+
 hydra:
   run:
     dir: .
   output_subdir: null
 
 # Environment
-env_id: "HalfCheetah-v5"  # Try: "HalfCheetah-v5", "Ant-v5", "Hopper-v5", "Walker2d-v5"
-num_envs: 1  # SAC typically uses single environment
+env_id: "Go1JoystickFlatTerrain"
+num_envs: 128          # Brax SAC default
 
 # Training
-total_timesteps: 1000000
-learning_starts: 5000  # number of steps before training starts
-batch_size: 256  # minibatch size for training
+total_timesteps: 20_000_000
+learning_starts: 8192  # fill buffer before gradient updates (Brax min_replay_size)
+batch_size: 256        # Brax default
 
-# SAC hyperparameters (tuned from Stable-Baselines3)
-actor_lr: 3e-4
-critic_lr: 3e-4
-alpha_lr: 3e-4
+# SAC hyperparameters (Brax defaults)
+actor_lr: 3.0e-4
+critic_lr: 3.0e-4
+alpha_lr: 3.0e-4
 gamma: 0.99
-tau: 0.005  # soft update coefficient for target networks
-target_update_interval: 1  # update target networks every N steps
-auto_tune_alpha: true  # automatically tune entropy coefficient
-alpha: 0.2  # initial entropy coefficient (if not auto-tuning)
-target_entropy_scale: 1.0  # scale for target entropy (-dim(A) * scale)
+tau: 0.005             # Polyak soft-update coefficient
+alpha: 0.2             # initial / fixed entropy coefficient
+auto_tune_alpha: true  # dual gradient descent for entropy regularisation
+target_entropy_scale: 1.0  # target_entropy = -action_dim * scale
+reward_scaling: 1.0
 
 # Replay buffer
-buffer_size: 1000000
+buffer_size: 1_048_576  # Brax max_replay_size
 
-# Network architecture
-# Hidden layer sizes for actor and critic networks
-actor_hidden_sizes: [256, 256]   # Actor/policy network hidden layers
-critic_hidden_sizes: [256, 256]  # Critic/Q network hidden layers
-# Activation functions (Options: relu (SAC default), tanh, swish, elu, gelu, leaky_relu)
-actor_activation: "relu"   # Actor/policy network activation
-critic_activation: "relu"  # Critic/Q network activation
+# Network architecture  (same hidden sizes for actor & critic)
+hidden_sizes: [256, 256]
+activation: "relu"     # Options: relu, tanh, swish, elu, gelu
 
-# Normalization
-norm_obs: false  # normalize observations
+# Observation keys (set both to "state" if no privileged obs)
+policy_obs_key: "state"
+value_obs_key: "privileged_state"
 
 # Logging
-log_frequency: 1000  # log every N steps
+verbose: true
+progress_bar: false
+log_frequency: 1000    # log every N global_steps
+eval_frequency: 10000  # run evaluation every N global_steps
+eval_episodes: 128
+
+# Weights & Biases
 use_wandb: false
-wandb_project: "sac-nnx"  # wandb project name
-seed: 42
+wandb_project: "mjxrl_sac"
 
 # Checkpointing
-save_model: true  # save model checkpoints
-checkpoint_dir: "checkpoints"  # directory to save checkpoints
-checkpoint_frequency: 50000  # save checkpoint every N steps
-keep_checkpoints: 3  # number of checkpoints to keep
-resume_from: null  # path to checkpoint directory to resume from
+use_checkpointing: false
+checkpoint_dir: "checkpoints"
+checkpoint_frequency: 50000  # save every N global_steps (0 = off)
+
+# Misc
+use_domain_randomization: false
+env_overrides: {}
+seed: 42

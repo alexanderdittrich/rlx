@@ -14,6 +14,7 @@ dependencies = [
     "gymnasium[box2d,mujoco]>=1.2.1",
     "hydra-core>=1.3.2",
     "jax[cuda]>=0.7.2",
+    "matplotlib>=3.10.8",
     "mujoco>=3.3.7",
     "optax>=0.2.6",
     "orbax-checkpoint>=0.11.25",

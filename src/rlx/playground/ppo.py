@@ -445,13 +445,22 @@ def _write_metadata(run_dir: Path, run_id: str, cfg: PPOConfig) -> None:
 # ── Training ──────────────────────────────────────────────────────────────────
 
 
-def train(cfg: PPOConfig, resume_from: str | None = None):
+def train(
+    cfg: PPOConfig,
+    resume_from: str | None = None,
+    env_factory=None,
+    log_callback=None,
+):
     """
     Train PPO.
 
     Args:
         cfg: PPOConfig with all hyperparameters.
         resume_from: path to a run dir to resume from, or None.
+        env_factory: optional callable returning a raw MjxEnv instance.
+            If provided, overrides registry.load(cfg.env_id).
+        log_callback: optional callable(log_dict, global_step) called each
+            log iteration.
     """
     # ── Run identity ──────────────────────────────────────────────────────
     run_id = (
@@ -471,6 +480,8 @@ def train(cfg: PPOConfig, resume_from: str | None = None):
     _env_overrides = cfg.env_overrides or None
 
     def _load():
+        if env_factory is not None:
+            return env_factory()
         return registry.load(cfg.env_id, config_overrides=_env_overrides)
 
     # ── Domain randomization (Playground registry pattern) ────────────────
@@ -860,6 +871,9 @@ def train(cfg: PPOConfig, resume_from: str | None = None):
                 postfix: dict[str, str] = {"sps": f"{sps:5.0f}"}
                 pbar.set_postfix(postfix)
 
+            if log_callback is not None:
+                log_callback(log, global_step)
+
             if cfg.use_wandb:
                 wandb.log(log, step=global_step)
 
@@ -870,4 +884,4 @@ def train(cfg: PPOConfig, resume_from: str | None = None):
         wandb.finish()
 
     model, optimizer = nnx.merge(graphdef, combined_state)
-    return model, optimizer
+    return model, optimizer, actor_stats, critic_stats

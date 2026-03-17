@@ -66,4 +66,6 @@ uv run scripts/playground_ckpt_view.py run_dir="./checkpoints/<CKPT_DIR_PATH>"
 You can choose how many times each checkpoint should be evaluated and each checkpoint and evaluation rollout can be navigated directly in the visualizer via the arrow keys (←→↑↓).
 
 
-<video src="./docs/viewer.mp4" controls="controls" width="100%"></video>
+https://github.com/user-attachments/assets/e61a383b-47d3-4516-8960-66d3689c7f9a
+
+

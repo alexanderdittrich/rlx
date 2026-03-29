@@ -1,0 +1,322 @@
+<mujoco model="okapi">
+
+  <!-- ── Compiler ──────────────────────────────────────────────────────────── -->
+  <compiler angle="radian" autolimits="true"/>
+
+  <!-- ── Physics (MJX-optimised) ───────────────────────────────────────────── -->
+  <!--   implicitfast  : stable at larger dt, ideal for GPU rollouts           -->
+  <!--   CG solver     : fast sparse solve, native to MJX                      -->
+  <!--   low iter count: keeps per-step cost cheap on GPU                      -->
+  <option
+    timestep      = "0.004"
+    integrator    = "RK4"
+    iterations    = "1"
+    ls_iterations = "5"
+    gravity       = "0 0 -9.81"/>
+
+  <size nconmax="100" njmax="500"/>
+
+  <!-- ── Visuals ───────────────────────────────────────────────────────────── -->
+  <visual>
+    <map znear="0.005" zfar="60"/>
+    <rgba haze="0.18 0.26 0.36 1"/>
+    <global offwidth="1280" offheight="720" elevation="-20" azimuth="130"/>
+    <quality shadowsize="4096" offsamples="8"/>
+  </visual>
+
+  <statistic center="0 0 0.4" extent="1.6"/>
+
+  <!-- ── Assets ────────────────────────────────────────────────────────────── -->
+  <asset>
+    <texture type="skybox" builtin="gradient"
+             rgb1=".45 .62 .78" rgb2=".06 .10 .16" width="512" height="512"/>
+    <texture name="texplane" type="2d" builtin="checker"
+             rgb1=".28 .28 .28" rgb2=".46 .46 .46" width="512" height="512"/>
+    <material name="MatPlane" reflectance="0.3" texture="texplane"
+              texrepeat="5 5" texuniform="true"/>
+
+  </asset>
+
+  <!-- ── Defaults ──────────────────────────────────────────────────────────── -->
+  <!--   class "vis"  : decorative geoms — no collision, zero mass             -->
+  <!--   class "phys" : physical limb geoms — collision on                     -->
+  <!--   class "foot" : high-friction foot spheres                             -->
+  <default>
+    <geom condim="3" friction="0.8 0.1 0.1" solref="0.02 1" solimp="0.9 0.95 0.001"/>
+    <joint type="hinge" limited="true" damping="1.0" armature="0.01" frictionloss="0.01"/>
+    <!-- position actuator defaults (kp overridden per-joint below) -->
+
+    <default class="vis">
+      <geom contype="0" conaffinity="0" mass="0"/>
+    </default>
+    <default class="phys">
+      <geom contype="1" conaffinity="1" rgba="0.42 0.20 0.04 1"/>
+    </default>
+    <default class="foot">
+      <geom type="sphere" size="0.028" contype="1" conaffinity="1"
+            rgba="0.18 0.14 0.08 1" friction="1.4 0.05 0.05" solref="0.01 1"/>
+    </default>
+  </default>
+
+  <!-- ═══════════════════════════════════════════════════════════════════════ -->
+  <!--  WORLD                                                                   -->
+  <!-- ═══════════════════════════════════════════════════════════════════════ -->
+  <worldbody>
+    <light name="sun"  directional="true" diffuse=".92 .86 .72" specular=".5 .45 .3"
+           pos="5 -4 14" dir="-0.35 0.28 -5"/>
+    <light name="fill" directional="true" diffuse=".28 .33 .42" specular="0 0 0"
+           pos="-5 5 6" dir="0.5 -0.5 -1"/>
+    <geom name="floor" size="0 0 .5" type="plane"
+          material="MatPlane" contype="1" conaffinity="1"/>
+
+    <!-- ═══ TORSO ══════════════════════════════════════════════════════════
+         Free joint at z=0.48.  Geometry ground-clearance (q=0, straight legs):
+           hip attach  z = 0.48 − 0.04 = 0.44
+           knee        z = 0.44 − 0.20 = 0.24
+           ankle       z = 0.24 − 0.20 = 0.04
+           foot bottom z = 0.04 − 0.026 ≈ 0.014  (just above floor)          -->
+    <body name="torso" pos="0 0 0.5">
+      <camera name="track" pos="0.846 -1.3 0.416" xyaxes="0.866 0.500 0.000 -0.171 0.296 0.940" mode="trackcom"/>
+      <camera name="top" pos="-1.5 0 1.5" xyaxes="0 -1 0 0.7 0 0.7" mode="trackcom"/>
+      <camera name="side" pos="0 -2 .8" xyaxes="1 0 0 0 1 2" mode="trackcom"/>
+      <camera name="back" pos="-1.5 0 .5" xyaxes="0 -1 0 1 0 3" mode="trackcom"/>
+
+      <freejoint name="root"/>
+
+      <!-- IMU site — used to compute gravity vector and local velocities -->
+      <site name="imu" pos="0 0 0" size="0.005" rgba="0 0 1 0"/>
+
+      <!-- Physics capsule: body collision + inertia -->
+      <geom name="torso" type="capsule" size="0.082"
+            fromto="-0.22 0 0  0.22 0 0" class="phys"/>
+
+      <!-- Neck (visual) -->
+      <geom name="neck" type="capsule" size="0.044"
+            fromto="0.22 0 0.022  0.3 0 0.255"
+            rgba="0.42 0.20 0.04 1" class="vis"/>
+
+      <!-- Cranium — sphere gives a round, natural skull shape.
+           Center (0.30, 0, 0.275), radius 0.058.
+           Neck tip at (0.28, 0, 0.255) sits inside the sphere → clean merge. -->
+      <geom name="head" type="capsule" size="0.052" fromto="0.3 0 0.275  0.32 0 0.26"
+            rgba="0.42 0.20 0.04 1" class="vis"/>
+
+      <!-- Snout — short muzzle starting from front of cranium sphere.
+           ~55% of skull diameter long, matching okapi proportions.            -->
+      <geom name="snout" type="capsule" size="0.035"
+            fromto="0.35 0 0.240  0.38 0 0.23"
+            rgba="0.42 0.20 0.04 1" class="vis"/>
+      <geom name="nose" type="sphere" size="0.014"
+            rgba="0.06 0.04 0.02 1" pos="0.405 0 0.24" class="vis"/>
+
+      <!-- Eyes — on the front-side of the sphere -->d
+      <geom name="eye_l" type="sphere" size="0.014"
+            rgba="0.06 0.04 0.02 1" pos="0.34  0.04 0.285" class="vis"/>
+      <geom name="eye_r" type="sphere" size="0.014"
+            rgba="0.06 0.04 0.02 1" pos="0.34 -0.04 0.285" class="vis"/>
+
+      <!-- Ossicones — ellipsoid with x as the THIN axis so the broad oval face
+           points forward (y-z plane faces +x).
+             size = "thin_x  wide_y  tall_z" = "0.015 0.030 0.080"
+           euler (radians, intrinsic xyz):
+             x  ≈ ±0.28 rad (≈16°) tilts top outward away from head
+             y  ≈ -0.10 rad (≈ 6°) leans top slightly forward
+           Positioned so the base overlaps the sphere → ears grow from skull.  -->
+      <geom name="ossicone_l" type="capsule" size="0.01 0.02 0.030"
+            rgba="0.38 0.18 0.04 1" pos="0.32  0.025 0.32"
+            euler=" -0.1 -0.250 0.1" class="vis"/>
+      <geom name="ossicone_r" type="capsule" size="0.01 0.02 0.030"
+            rgba="0.38 0.18 0.04 1" pos="0.32 -0.025 0.32"
+            euler="0.1 -0.250 -0.1" class="vis"/>
+
+      <!-- Ears — ellipsoid with x as the THIN axis so the broad oval face
+           points forward (y-z plane faces +x).
+             size = "thin_x  wide_y  tall_z" = "0.015 0.030 0.080"
+           euler (radians, intrinsic xyz):
+             x  ≈ ±0.28 rad (≈16°) tilts top outward away from head
+             y  ≈ -0.10 rad (≈ 6°) leans top slightly forward
+           Positioned so the base overlaps the sphere → ears grow from skull.  -->
+      <geom name="ear_l" type="ellipsoid" size="0.01 0.03 0.070"
+            rgba="0.38 0.18 0.04 1" pos="0.27  0.07 0.338"
+            euler=" -0.9 -0.250 0.4" class="vis"/>
+      <geom name="ear_r" type="ellipsoid" size="0.01 0.03 0.070"
+            rgba="0.38 0.18 0.04 1" pos="0.27 -0.07 0.338"
+            euler="0.9 -0.250 -0.4" class="vis"/>
+
+      <!-- Tail (visual) — starts from upper-rear of torso, carried higher -->
+      <geom name="tail" type="capsule" size="0.015"
+            fromto="-0.22 0 0.06  -0.38 0 -0.05"
+            rgba="0.42 0.20 0.04 1" class="vis"/>
+
+      <!-- ══════════════════════════════════════════════════════════════════
+           LEGS — 3 DOF each (hip_abduction + hip_flexion + knee) = 12 DOF
+           Each leg: brown thigh capsule + coloured shin capsule + foot sphere
+           Front shins: ivory/cream   →  lighter okapi front-leg look
+           Rear  shins: near-black    →  bold okapi hindquarter pattern       -->
+
+      <!-- ── FRONT LEFT ──────────────────────────────────────────────────── -->
+      <body name="thigh_FL" pos="0.185  0.100 -0.040">
+        <joint name="hip_ab_FL" axis="1 0 0" range="-0.50 0.50"/>
+        <joint name="hip_fl_FL" axis="0 1 0" range="-1.05 0.80"/>
+        <geom  name="thigh_FL"  type="capsule" size="0.042"
+               fromto="0 0 0  0 0 -0.200" class="phys"/>
+        <body name="shin_FL" pos="0 0 -0.200">
+          <joint name="knee_FL" axis="0 1 0" range="-2.60 0.05"/>
+          <geom  name="shin_FL"   type="capsule" size="0.025" fromto="0 0 0  0 0 -0.200" class="phys"/>
+          <!-- visual stripe bands — no mass, no collision -->
+          <geom name="shin_FL_v1" type="capsule" size="0.026" fromto="0 0 0      0 0 -0.050" rgba="0.90 0.86 0.78 1" class="vis"/>
+          <geom name="shin_FL_v2" type="capsule" size="0.026" fromto="0 0 -0.050 0 0 -0.100" rgba="0.10 0.08 0.05 1" class="vis"/>
+          <geom name="shin_FL_v3" type="capsule" size="0.026" fromto="0 0 -0.100 0 0 -0.150" rgba="0.90 0.86 0.78 1" class="vis"/>
+          <geom name="shin_FL_v4" type="capsule" size="0.026" fromto="0 0 -0.150 0 0 -0.200" rgba="0.10 0.08 0.05 1" class="vis"/>
+          <body name="foot_FL" pos="0 0 -0.214">
+            <site name="foot_FL" pos="0 0 0" size="0.005" rgba="0 1 0 0"/>
+            <geom name="foot_FL" class="foot"/>
+          </body>
+        </body>
+      </body>
+
+      <!-- ── FRONT RIGHT ─────────────────────────────────────────────────── -->
+      <body name="thigh_FR" pos="0.185 -0.100 -0.040">
+        <joint name="hip_ab_FR" axis="1 0 0" range="-0.50 0.50"/>
+        <joint name="hip_fl_FR" axis="0 1 0" range="-1.05 0.80"/>
+        <geom  name="thigh_FR"  type="capsule" size="0.042"
+               fromto="0 0 0  0 0 -0.200" class="phys"/>
+        <body name="shin_FR" pos="0 0 -0.200">
+          <joint name="knee_FR" axis="0 1 0" range="-2.60 0.05"/>
+          <geom  name="shin_FR"   type="capsule" size="0.025" fromto="0 0 0  0 0 -0.200" class="phys"/>
+          <!-- visual stripe bands — no mass, no collision -->
+          <geom name="shin_FR_v1" type="capsule" size="0.026" fromto="0 0 0      0 0 -0.050" rgba="0.90 0.86 0.78 1" class="vis"/>
+          <geom name="shin_FR_v2" type="capsule" size="0.026" fromto="0 0 -0.050 0 0 -0.100" rgba="0.10 0.08 0.05 1" class="vis"/>
+          <geom name="shin_FR_v3" type="capsule" size="0.026" fromto="0 0 -0.100 0 0 -0.150" rgba="0.90 0.86 0.78 1" class="vis"/>
+          <geom name="shin_FR_v4" type="capsule" size="0.026" fromto="0 0 -0.150 0 0 -0.200" rgba="0.10 0.08 0.05 1" class="vis"/>
+          <body name="foot_FR" pos="0 0 -0.214">
+            <site name="foot_FR" pos="0 0 0" size="0.005" rgba="0 1 0 0"/>
+            <geom name="foot_FR" class="foot"/>
+          </body>
+        </body>
+      </body>
+
+      <!-- ── REAR LEFT ───────────────────────────────────────────────────── -->
+      <body name="thigh_RL" pos="-0.185  0.100 -0.040">
+        <joint name="hip_ab_RL" axis="1 0 0" range="-0.50 0.50"/>
+        <joint name="hip_fl_RL" axis="0 1 0" range="-0.80 1.05"/>
+        <geom  name="thigh_RL"   type="capsule" size="0.046" fromto="0 0 0  0 0 -0.200" class="phys"/>
+        <!-- visual stripe bands — no mass, no collision -->
+        <geom name="thigh_RL_v1" type="capsule" size="0.0465" fromto="0 0 0      0 0 -0.050" rgba="0.42 0.20 0.04 1" class="vis"/>
+        <geom name="thigh_RL_v2" type="capsule" size="0.0465" fromto="0 0 -0.050 0 0 -0.100" rgba="0.90 0.86 0.78 1" class="vis"/>
+        <geom name="thigh_RL_v3" type="capsule" size="0.0465" fromto="0 0 -0.100 0 0 -0.150" rgba="0.10 0.08 0.05 1" class="vis"/>
+        <geom name="thigh_RL_v4" type="capsule" size="0.0465" fromto="0 0 -0.150 0 0 -0.200" rgba="0.90 0.86 0.78 1" class="vis"/>
+        <body name="shin_RL" pos="0 0 -0.200">
+          <joint name="knee_RL" axis="0 1 0" range="-2.60 0.05"/>
+          <geom  name="shin_RL"   type="capsule" size="0.028" fromto="0 0 0  0 0 -0.200" class="phys"/>
+          <!-- visual stripe bands — no mass, no collision -->
+          <geom name="shin_RL_v1" type="capsule" size="0.0285" fromto="0 0 0      0 0 -0.050" rgba="0.90 0.86 0.78 1" class="vis"/>
+          <geom name="shin_RL_v2" type="capsule" size="0.0285" fromto="0 0 -0.050 0 0 -0.100" rgba="0.10 0.08 0.05 1" class="vis"/>
+          <geom name="shin_RL_v3" type="capsule" size="0.0285" fromto="0 0 -0.100 0 0 -0.150" rgba="0.90 0.86 0.78 1" class="vis"/>
+          <geom name="shin_RL_v4" type="capsule" size="0.0285" fromto="0 0 -0.150 0 0 -0.200" rgba="0.10 0.08 0.05 1" class="vis"/>
+          <body name="foot_RL" pos="0 0 -0.214">
+            <site name="foot_RL" pos="0 0 0" size="0.005" rgba="0 1 0 0"/>
+            <geom name="foot_RL" class="foot"/>
+          </body>
+        </body>
+      </body>
+
+      <!-- ── REAR RIGHT ──────────────────────────────────────────────────── -->
+      <body name="thigh_RR" pos="-0.185 -0.100 -0.040">
+        <joint name="hip_ab_RR" axis="1 0 0" range="-0.50 0.50"/>
+        <joint name="hip_fl_RR" axis="0 1 0" range="-0.80 1.05"/>
+        <geom  name="thigh_RR"   type="capsule" size="0.046" fromto="0 0 0  0 0 -0.200" class="phys"/>
+        <!-- visual stripe bands — no mass, no collision -->
+        <geom name="thigh_RR_v1" type="capsule" size="0.0465" fromto="0 0 0      0 0 -0.050" rgba="0.42 0.20 0.04 1" class="vis"/>
+        <geom name="thigh_RR_v2" type="capsule" size="0.0465" fromto="0 0 -0.050 0 0 -0.100" rgba="0.90 0.86 0.78 1" class="vis"/>
+        <geom name="thigh_RR_v3" type="capsule" size="0.0465" fromto="0 0 -0.100 0 0 -0.150" rgba="0.10 0.08 0.05 1" class="vis"/>
+        <geom name="thigh_RR_v4" type="capsule" size="0.0465" fromto="0 0 -0.150 0 0 -0.200" rgba="0.90 0.86 0.78 1" class="vis"/>
+        <body name="shin_RR" pos="0 0 -0.200">
+          <joint name="knee_RR" axis="0 1 0" range="-2.60 0.05"/>
+          <geom  name="shin_RR"   type="capsule" size="0.028" fromto="0 0 0  0 0 -0.200" class="phys"/>
+          <!-- visual stripe bands — no mass, no collision -->
+          <geom name="shin_RR_v1" type="capsule" size="0.0285" fromto="0 0 0      0 0 -0.050" rgba="0.90 0.86 0.78 1" class="vis"/>
+          <geom name="shin_RR_v2" type="capsule" size="0.0285" fromto="0 0 -0.050 0 0 -0.100" rgba="0.10 0.08 0.05 1" class="vis"/>
+          <geom name="shin_RR_v3" type="capsule" size="0.0285" fromto="0 0 -0.100 0 0 -0.150" rgba="0.90 0.86 0.78 1" class="vis"/>
+          <geom name="shin_RR_v4" type="capsule" size="0.0285" fromto="0 0 -0.150 0 0 -0.200" rgba="0.10 0.08 0.05 1" class="vis"/>
+          <body name="foot_RR" pos="0 0 -0.214">
+            <site name="foot_RR" pos="0 0 0" size="0.005" rgba="0 1 0 0"/>
+            <geom name="foot_RR" class="foot"/>
+          </body>
+        </body>
+      </body>
+
+    </body><!-- /torso -->
+  </worldbody>
+
+  <!-- ── Contact exclusions (adjacent body pairs) ───────────────────────────
+       MJX automatically excludes parent-grandparent pairs but NOT
+       direct parent-child, so we list those explicitly.                      -->
+  <contact>
+    <exclude body1="torso"    body2="thigh_FL"/>
+    <exclude body1="torso"    body2="thigh_FR"/>
+    <exclude body1="torso"    body2="thigh_RL"/>
+    <exclude body1="torso"    body2="thigh_RR"/>
+    <exclude body1="thigh_FL" body2="shin_FL"/>
+    <exclude body1="thigh_FR" body2="shin_FR"/>
+    <exclude body1="thigh_RL" body2="shin_RL"/>
+    <exclude body1="thigh_RR" body2="shin_RR"/>
+    <exclude body1="shin_FL"  body2="foot_FL"/>
+    <exclude body1="shin_FR"  body2="foot_FR"/>
+    <exclude body1="shin_RL"  body2="foot_RL"/>
+    <exclude body1="shin_RR"  body2="foot_RR"/>
+  </contact>
+
+  <!-- ── 12 position actuators (3 per leg × 4 legs) ──────────────────────
+       kp  : proportional gain (Nm/rad).  Kd via joint damping=0.5.
+       Abduction joints need less torque → kp=20; flexion/knee → kp=35.    -->
+  <actuator>
+    <position name="hip_ab_FL" joint="hip_ab_FL" kp="40" ctrllimited="true" ctrlrange="-0.50 0.50"/>
+    <position name="hip_fl_FL" joint="hip_fl_FL" kp="100" ctrllimited="true" ctrlrange="-1.05 0.80"/>
+    <position name="knee_FL"   joint="knee_FL"   kp="100" ctrllimited="true" ctrlrange="-2.60 0.05"/>
+
+    <position name="hip_ab_FR" joint="hip_ab_FR" kp="40" ctrllimited="true" ctrlrange="-0.50 0.50"/>
+    <position name="hip_fl_FR" joint="hip_fl_FR" kp="100" ctrllimited="true" ctrlrange="-1.05 0.80"/>
+    <position name="knee_FR"   joint="knee_FR"   kp="100" ctrllimited="true" ctrlrange="-2.60 0.05"/>
+
+    <position name="hip_ab_RL" joint="hip_ab_RL" kp="40" ctrllimited="true" ctrlrange="-0.50 0.50"/>
+    <position name="hip_fl_RL" joint="hip_fl_RL" kp="100" ctrllimited="true" ctrlrange="-0.80 1.05"/>
+    <position name="knee_RL"   joint="knee_RL"   kp="100" ctrllimited="true" ctrlrange="-2.60 0.05"/>
+
+    <position name="hip_ab_RR" joint="hip_ab_RR" kp="40" ctrllimited="true" ctrlrange="-0.50 0.50"/>
+    <position name="hip_fl_RR" joint="hip_fl_RR" kp="100" ctrllimited="true" ctrlrange="-0.80 1.05"/>
+    <position name="knee_RR"   joint="knee_RR"   kp="100" ctrllimited="true" ctrlrange="-2.60 0.05"/>
+  </actuator>
+
+  <!-- ── Sensors ───────────────────────────────────────────────────────────
+       Global-frame vel + angvel rotated to body frame in Python (via xmat).
+       Foot site linvel sensors for slip / swing tracking.                  -->
+  <sensor>
+    <framelinvel  name="torso_linvel"  objtype="body" objname="torso"/>
+    <frameangvel  name="torso_angvel"  objtype="body" objname="torso"/>
+    <framelinvel  name="foot_FL_vel"   objtype="site" objname="foot_FL"/>
+    <framelinvel  name="foot_FR_vel"   objtype="site" objname="foot_FR"/>
+    <framelinvel  name="foot_RL_vel"   objtype="site" objname="foot_RL"/>
+    <framelinvel  name="foot_RR_vel"   objtype="site" objname="foot_RR"/>
+    <contact name="foot_FR_floor_found" geom1="foot_FR" geom2="floor" reduce="mindist" num="1" data="found"/>
+    <contact name="foot_FL_floor_found" geom1="foot_FL" geom2="floor" reduce="mindist" num="1" data="found"/>
+    <contact name="foot_RL_floor_found" geom1="foot_RL" geom2="floor" reduce="mindist" num="1" data="found"/>
+    <contact name="foot_RR_floor_found" geom1="foot_RR" geom2="floor" reduce="mindist" num="1" data="found"/>
+  </sensor>
+
+  <!-- ── Standing keyframe ─────────────────────────────────────────────────
+       qpos layout (19 values):
+         root freejoint : x y z  qw qx qy qz
+         leg joints     : hip_ab  hip_fl  knee   ×4 (FL FR RL RR)
+       Slight knee bend (−0.20 rad) for a natural pre-loaded stance.         -->
+  <keyframe>
+    <key name="stand"
+         qpos="0 0 0.48  1 0 0 0
+               0  0.0 -0.20
+               0  0.0 -0.20
+               0  0.0 -0.20
+               0  0.0 -0.20"
+         ctrl="0 0 -0.20  0 0 -0.20  0 0 -0.20  0 0 -0.20"/>
+  </keyframe>
+
+</mujoco>

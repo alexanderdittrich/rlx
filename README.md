@@ -43,6 +43,9 @@ For benchmarking, we use the default parameters by `MuJoCo Playground` for dm_co
 ## Showcase Tasks
 [Goncalog](https://github.com/goncalog/ai-robotics) presented very nice football-inspired tasks. We transfered the tasks to the `MuJoCo Playground` API and added them in the `/examples`-folder and as a showcase for the functionality of the training algorithm beyond benchmarks.
 
+### Okapi Locomote
+<a><img src="docs/okapi_locomotion.gif" width="480"/></a>
+
 ### Foot tricks with Humanoid
 <a><img src="docs/foot_tricks_2.gif" width="480"/></a>
 

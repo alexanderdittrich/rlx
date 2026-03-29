@@ -13,18 +13,21 @@ from okapi.gymnasium.ppo_vision import PPOVisionConfig, train
 
 
 def huzzah(cfg):
-    OKAPI_LOGO = r"""
-          JJJJJ     JJJJJ
-    JJJJJJ:::::JJJJJ:::::JJJJJJ
-    JJJJJJJ:::::JJJ::::::JJJJJJJ                666                                 6666
-    UUUUUUJJ:::::JJ:::::JJUUUUUU                666                                     
-    zzzzzzzzzJJ::::::JJzzzzzzzzz    666666666   666  6666    66666666   666666666    666
-    zzzzzzzzJ:::::::::YJzzzzzzzz   666    6666  666666       66666666   666    666   666
-    zzzzzzzJJ::JJ::JJ::Jzzzzzzzz   6666   666   666  6666  6666   666   666   6666   666
-    zzzzzzzzJ::::::::::Jzzzzzzzz     666666     666    666   66666666   66666666     666
-    zzzzzzzzJJ::::::::Jzzzzzzzzz                                        666             
-    zzzzzzzzzzJ::JJ:JJzzzzzzzzz
-        JJJJJJJJJ::JJJJJJJJJ
+    OKAPI_LOGO = r"""                                                                 
+       JJJJJJJJJJJJJJJJJJJJ                                                       
+   JJJ::JJJ::::::::::::JJJ::JJJ                                                   
+    J:::::::JJ:JJJJ:JJ:::::::J              JJJ                             JJJ   
+    JJJ:::::::J::::J::J::::JJJ              JJJ                             JJJ   
+    JJJJJJ::J::::::::J::JJJJJJ              JJJ                                   
+    ::::::::J:::::::::J:::::::   JJJJJJJJ   JJJ JJJJ   JJJJJJJ   JJJJJJJJ   JJJ   
+    :::::::J::J::::JJ:J:::::::  JJJ   JJJ   JJJJJJ          JJ   JJJ   JJJ  JJJ   
+    JJJJJJJJ::::::::::JJJJJJJJ  JJJ    JJJ  JJJJJJ    JJJJJJJJ   JJJ   JJJ  JJJ   
+    JJJJJJJJf:::::::::JJJJJJJJ  JJJ   JJJ   JJJ JJJ   JJJ   JJ   JJJ   JJJ  JJJ   
+    JJJJJJJJJ::::::::JJJJJJJJJ    JJJJJJ    JJJ  JJJJ  JJJJJJJ   JJJJJJJJ   JJJ   
+    :::::::::J::::::J:::::::::                                   JJJ              
+     JJJJJJJJJJ:::::JJJJJJJJJ                                    JJJ              
+      JJJJJJJJJ::::JJJJJJJJJ                                                      
+                JJJ                                                                                                                                                                 
     """
     print(OKAPI_LOGO)
     print("\n" + "=" * 54)
